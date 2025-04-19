@@ -9,12 +9,10 @@ import sys,os
 path = os.getcwd()
 path = path.replace('visualization','')
 
-# 设置文件路径
 csv_file = path + '/data/merged_data_cleaned.csv'
 output_dir = 'annot_tree_output'
 os.makedirs(output_dir, exist_ok=True)
 
-# 读取CSV文件
 print("读取CSV文件...")
 try:
     df = pd.read_csv(csv_file, encoding='utf-8')
