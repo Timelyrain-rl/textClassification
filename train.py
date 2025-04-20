@@ -72,25 +72,23 @@ def train_model(model, train_loader, optimizer, device, num_epochs=5):
         print(f'Epoch {epoch+1}, Average Loss: {avg_loss:.4f}')
 
 def main():
-    # Initialize tokenizer and model
+    # Initialize tokenizer
     tokenizer = LongformerTokenizer.from_pretrained('allenai/longformer-base-4096')
-    model = HierarchicalClassifier()
+    # Load data
+    df = pd.read_csv('data/merged_data_cleaned.csv')
+    texts = df['主要内容'].values
+    # Load preprocessed labels
+    labels_l1 = np.load('data/cooccurrence_l1_l2.npy')
+    labels_l2 = np.load('data/cooccurrence_l1_l3.npy')
+    labels_l3 = np.load('data/cooccurrence_l1_l3.npy')
+    # Initialize model
+    model = HierarchicalClassifier(
+        num_labels_l1=labels_l1.shape[1],
+        num_labels_l2=labels_l2.shape[1],
+        num_labels_l3=labels_l3.shape[1]
+    )
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model.to(device)
-    
-    # Example: Load your data
-    # df = pd.read_csv('data/merged_data_cleaned.csv')
-    # texts = df['text'].values
-    # labels_l1 = df[['label_l1_1', 'label_l1_2', ...]].values  # 13 columns
-    # labels_l2 = df[['label_l2_1', 'label_l2_2', ...]].values  # 77 columns
-    # labels_l3 = df[['label_l3_1', 'label_l3_2', ...]].values  # 340 columns
-    
-    # For demonstration, create dummy data
-    num_samples = 100
-    texts = [f"Sample text {i}" for i in range(num_samples)]
-    labels_l1 = np.random.randint(0, 2, size=(num_samples, 13))
-    labels_l2 = np.random.randint(0, 2, size=(num_samples, 77))
-    labels_l3 = np.random.randint(0, 2, size=(num_samples, 340))
     
     # Create dataset and dataloader
     dataset = TextDataset(texts, labels_l1, labels_l2, labels_l3, tokenizer, max_length=2048)  # 减小序列长度
