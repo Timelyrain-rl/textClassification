@@ -3,19 +3,3 @@
 *.pt
 *.ckpt
 *.bin
-
-# 忽略缓存文件
-__pycache__/
-*.py[cod]
-*$py.class
-
-# 忽略环境文件
-.env
-.venv
-env/
-venv/
-ENV/
-
-# IDE配置
-.vscode/
-.idea/
