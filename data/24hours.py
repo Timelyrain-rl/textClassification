@@ -22,12 +22,12 @@ plt.figure(figsize=(15, 8))
 bar_width = 0.35
 index = range(24)
 
-plt.bar(index, hourly_distribution['政务'], bar_width, label='yes')
-plt.bar([i + bar_width for i in index], hourly_distribution['非政务'], bar_width, label='not')
+plt.bar(index, hourly_distribution['政务'], bar_width, label='政务')
+plt.bar([i + bar_width for i in index], hourly_distribution['非政务'], bar_width, label='非政务')
 
-plt.title('24hours', fontsize=16)
-plt.xlabel('hours', fontsize=12)
-plt.ylabel('counts', fontsize=12)
+plt.title('政务分类_24小时分布', fontsize=16)
+plt.xlabel('小时', fontsize=12)
+plt.ylabel('计数', fontsize=12)
 plt.xticks([i + bar_width/2 for i in index], index) 
 plt.grid(True, linestyle='--', alpha=0.6)
 
