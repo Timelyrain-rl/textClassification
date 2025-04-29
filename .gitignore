@@ -3,3 +3,5 @@
 *.pt
 *.ckpt
 *.bin
+*.h5
+*.msgpack

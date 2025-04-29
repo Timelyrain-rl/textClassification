@@ -1,10 +1,12 @@
 import torch
 from torch.utils.data import Dataset, DataLoader
-from transformers import LongformerTokenizer
+# from transformers import LongformerTokenizer
+from transformers import BertTokenizer # 导入 BertTokenizer
 from models.hierarchical_classifier import HierarchicalClassifier
 import pandas as pd
 import numpy as np
 from sklearn.metrics import precision_recall_fscore_support, accuracy_score
+from sklearn.preprocessing import MultiLabelBinarizer # 新增导入
 
 class TextDataset(Dataset):
     def __init__(self, texts, labels_l1, labels_l2, labels_l3, tokenizer, max_length=512):
@@ -115,39 +117,74 @@ def evaluate_model(model, eval_loader, device):
 
 def main():
     print("开始加载tokenizer...")
-    tokenizer = LongformerTokenizer.from_pretrained('allenai/longformer-base-4096')
-    
+    # tokenizer = LongformerTokenizer.from_pretrained('allenai/longformer-base-4096')
+    tokenizer = BertTokenizer.from_pretrained('/root/autodl-tmp/textClassification/models/chinese-roberta-wwm-ext') # 加载本地 BertTokenizer
+
     print("加载数据...")
     df = pd.read_csv('data/merged_data_cleaned.csv')
     texts = df['主要内容'].values
-    
-    print("加载标签数据...")
-    labels_l1 = np.load('data/cooccurrence_l1_l2.npy')
-    labels_l2 = np.load('data/cooccurrence_l1_l3.npy')
-    labels_l3 = np.load('data/cooccurrence_l1_l3.npy')
-    
+
+    # --- 修改开始：加载并处理标签 ---
+    print("从DataFrame提取并预处理标签数据...")
+    # 获取标签列
+    raw_labels_l1 = df['一级分类'].values
+    raw_labels_l2 = df['二级分类'].values
+    raw_labels_l3 = df['三级分类'].values
+
+    # 预处理标签 - 实现标签编码
+    print("处理标签数据...")
+
+    # 处理一级标签
+    mlb_l1 = MultiLabelBinarizer()
+    processed_labels_l1 = [label.split(',') if isinstance(label, str) else [str(label)] for label in raw_labels_l1]
+    labels_l1 = mlb_l1.fit_transform(processed_labels_l1)
+    num_classes_l1 = len(mlb_l1.classes_)
+
+    # 处理二级标签
+    mlb_l2 = MultiLabelBinarizer()
+    processed_labels_l2 = [label.split(',') if isinstance(label, str) else [str(label)] for label in raw_labels_l2]
+    labels_l2 = mlb_l2.fit_transform(processed_labels_l2)
+    num_classes_l2 = len(mlb_l2.classes_)
+
+    # 处理三级标签
+    mlb_l3 = MultiLabelBinarizer()
+    processed_labels_l3 = [label.split(',') if isinstance(label, str) else [str(label)] for label in raw_labels_l3]
+    labels_l3 = mlb_l3.fit_transform(processed_labels_l3)
+    num_classes_l3 = len(mlb_l3.classes_)
+
+    print(f"标签维度: L1={labels_l1.shape}, L2={labels_l2.shape}, L3={labels_l3.shape}")
+    print(f"类别数量: L1={num_classes_l1}, L2={num_classes_l2}, L3={num_classes_l3}")
+    # --- 修改结束 ---
+
     print("初始化模型...")
+    # 注意：HierarchicalClassifier 的 __init__ 默认模型路径已修改为本地路径
+    # 使用从 MultiLabelBinarizer 获取的类别数量
     model = HierarchicalClassifier(
-        num_labels_l1=labels_l1.shape[1],
-        num_labels_l2=labels_l2.shape[1],
-        num_labels_l3=labels_l3.shape[1]
+        num_labels_l1=num_classes_l1,
+        num_labels_l2=num_classes_l2,
+        num_labels_l3=num_classes_l3
     )
-    
+
     print("加载模型权重...")
-    model.load_state_dict(torch.load('models/hierarchical_classifier.pth'))
-    
+    # 确保加载的是最佳模型
+    model_path = 'models/best_hierarchical_classifier.pth'
+    print(f"从 {model_path} 加载模型...")
+    model.load_state_dict(torch.load(model_path))
+
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"使用设备: {device}")
     model.to(device)
-    
+
     print("创建评估数据加载器...")
-    eval_dataset = TextDataset(texts, labels_l1, labels_l2, labels_l3, tokenizer)
-    eval_loader = DataLoader(eval_dataset, 
-                           batch_size=16,
-                           shuffle=False,
+    # 确认 max_length 是否适合 RoBERTa (通常是 512)
+    # 将处理后的标签传递给 Dataset
+    eval_dataset = TextDataset(texts, labels_l1, labels_l2, labels_l3, tokenizer, max_length=512)
+    eval_loader = DataLoader(eval_dataset,
+                           batch_size=16, # 可以根据评估时的显存调整
+                           shuffle=False, # 评估时不需要打乱
                            num_workers=4,
                            pin_memory=True)
-    
+
     evaluate_model(model, eval_loader, device)
 
 if __name__ == '__main__':

@@ -1,13 +1,14 @@
 import torch
 from torch.utils.data import Dataset, DataLoader
-from transformers import LongformerTokenizer
+# from transformers import LongformerTokenizer
+from transformers import BertTokenizer
 from models.hierarchical_classifier import HierarchicalClassifier
 import pandas as pd
 import numpy as np
 from torch.cuda.amp import autocast, GradScaler
-from sklearn.model_selection import train_test_split # 新增导入
-import os # 新增导入，用于创建目录
-from sklearn.preprocessing import MultiLabelBinarizer  # Add this import
+from sklearn.model_selection import train_test_split
+import os
+from sklearn.preprocessing import MultiLabelBinarizer 
 
 # 在 TextDataset 类中添加预处理缓存
 class TextDataset(Dataset):
@@ -79,7 +80,6 @@ def evaluate_model(model, val_loader, criterion, device):
     model.train() # 将模型设置回训练模式
     return avg_val_loss
 
-# 修改 train_model 函数以包含早停逻辑
 def train_model(model, train_loader, val_loader, optimizer, device, num_epochs=5, patience=3, min_delta=0.001, model_save_path='models/best_hierarchical_classifier.pth'):
     print(f"开始训练，总共最多{num_epochs}个epoch...")
     print(f"早停设置: patience={patience}, min_delta={min_delta}")
@@ -155,18 +155,19 @@ def train_model(model, train_loader, val_loader, optimizer, device, num_epochs=5
 
         # 检查是否需要早停
         if epochs_no_improve >= patience:
-            print(f'连续 {patience} 个 epochs 验证损失没有改善，触发早停！')
+            print(f'连续 {patience} 个 epochs 验证损失没有改善，提前停止训练')
             print(f'最佳模型保存在 Epoch {best_epoch}，验证损失为: {best_val_loss:.4f}')
             break # 退出训练循环
     
     if epoch == num_epochs - 1 and epochs_no_improve < patience:
-         print(f'训练完成所有 {num_epochs} 个 epochs。')
+         print(f'训练完成所有 {num_epochs} 个 epochs')
          print(f'最佳模型保存在 Epoch {best_epoch}，验证损失为: {best_val_loss:.4f}')
 
 
 def main():
     print("开始加载tokenizer...")
-    tokenizer = LongformerTokenizer.from_pretrained('allenai/longformer-base-4096')
+    # tokenizer = LongformerTokenizer.from_pretrained('allenai/longformer-base-4096')
+    tokenizer = BertTokenizer.from_pretrained('/root/autodl-tmp/textClassification/models/chinese-roberta-wwm-ext') # 加载本地 BertTokenizer
 
     print("加载数据...")
     df = pd.read_csv('data/merged_data_cleaned.csv')
@@ -221,6 +222,7 @@ def main():
 
     print("初始化模型...")
     # 使用从预处理中得到的类别数量
+    # HierarchicalClassifier 的 __init__ 默认模型路径已修改为本地路径
     model = HierarchicalClassifier(
         num_labels_l1=num_classes_l1,
         num_labels_l2=num_classes_l2,
@@ -232,18 +234,19 @@ def main():
 
     print("创建数据集和数据加载器...")
     # 将处理好的标签数组传递给 Dataset
+    # 当前 max_length=512
     train_dataset = TextDataset(train_texts, train_labels_l1, train_labels_l2, train_labels_l3, tokenizer, max_length=512)
     val_dataset = TextDataset(val_texts, val_labels_l1, val_labels_l2, val_labels_l3, tokenizer, max_length=512)
 
     train_loader = DataLoader(train_dataset,
-                            batch_size=16, # 根据你的 GPU 显存调整
+                            batch_size=16,
                             shuffle=True,
-                            num_workers=4, # 根据你的 CPU 核心数调整
+                            num_workers=4,
                             pin_memory=True)
 
     val_loader = DataLoader(val_dataset,
-                          batch_size=16, # 验证时 batch_size 可以适当增大
-                          shuffle=False, # 验证集不需要打乱
+                          batch_size=16,
+                          shuffle=False,
                           num_workers=4,
                           pin_memory=True)
 

@@ -1,0 +1,8 @@
+marker
+matplotlib
+numpy
+pandas
+Pillow
+scikit_learn
+spacy
+transformers
