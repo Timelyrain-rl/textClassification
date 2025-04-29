@@ -5,6 +5,9 @@ from models.hierarchical_classifier import HierarchicalClassifier
 import pandas as pd
 import numpy as np
 from torch.cuda.amp import autocast, GradScaler
+from sklearn.model_selection import train_test_split # 新增导入
+import os # 新增导入，用于创建目录
+from sklearn.preprocessing import MultiLabelBinarizer  # Add this import
 
 # 在 TextDataset 类中添加预处理缓存
 class TextDataset(Dataset):
@@ -36,100 +39,225 @@ class TextDataset(Dataset):
         return len(self.texts)
 
     def __getitem__(self, idx):
+        # 确保返回的标签是正确的类型和形状
         encoding = self.encodings[idx]
-        return {
+        item = {
             'input_ids': encoding['input_ids'].flatten(),
             'attention_mask': encoding['attention_mask'].flatten(),
-            'labels_l1': torch.FloatTensor(self.labels_l1[idx]),
-            'labels_l2': torch.FloatTensor(self.labels_l2[idx]),
-            'labels_l3': torch.FloatTensor(self.labels_l3[idx])
         }
+        # 确保标签是 FloatTensor
+        if self.labels_l1 is not None:
+            item['labels_l1'] = torch.FloatTensor(self.labels_l1[idx])
+        if self.labels_l2 is not None:
+            item['labels_l2'] = torch.FloatTensor(self.labels_l2[idx])
+        if self.labels_l3 is not None:
+            item['labels_l3'] = torch.FloatTensor(self.labels_l3[idx])
+        return item
 
-def train_model(model, train_loader, optimizer, device, num_epochs=5):
-    print(f"开始训练，总共{num_epochs}个epoch...")
+# 新增评估函数
+def evaluate_model(model, val_loader, criterion, device):
+    model.eval() # 设置模型为评估模式
+    total_val_loss = 0
+    with torch.no_grad(): # 在评估阶段不计算梯度
+        for batch in val_loader:
+            input_ids = batch['input_ids'].to(device)
+            attention_mask = batch['attention_mask'].to(device)
+            labels_l1 = batch['labels_l1'].to(device)
+            labels_l2 = batch['labels_l2'].to(device)
+            labels_l3 = batch['labels_l3'].to(device)
+
+            with autocast(): # 同样可以使用混合精度进行评估
+                outputs = model(input_ids=input_ids, attention_mask=attention_mask)
+                loss_l1 = criterion(outputs['l1_logits'], labels_l1)
+                loss_l2 = criterion(outputs['l2_logits'], labels_l2)
+                loss_l3 = criterion(outputs['l3_logits'], labels_l3)
+                loss = loss_l1 + loss_l2 + loss_l3
+
+            total_val_loss += loss.item()
+
+    avg_val_loss = total_val_loss / len(val_loader)
+    model.train() # 将模型设置回训练模式
+    return avg_val_loss
+
+# 修改 train_model 函数以包含早停逻辑
+def train_model(model, train_loader, val_loader, optimizer, device, num_epochs=5, patience=3, min_delta=0.001, model_save_path='models/best_hierarchical_classifier.pth'):
+    print(f"开始训练，总共最多{num_epochs}个epoch...")
+    print(f"早停设置: patience={patience}, min_delta={min_delta}")
     model.train()
     criterion = torch.nn.BCEWithLogitsLoss()
     scaler = GradScaler()
-    
+
+    best_val_loss = float('inf')
+    epochs_no_improve = 0
+    best_epoch = 0
+
+    # 确保保存模型的目录存在
+    model_save_dir = os.path.dirname(model_save_path)
+    if not os.path.exists(model_save_dir):
+        os.makedirs(model_save_dir)
+        print(f"创建目录: {model_save_dir}")
+
     for epoch in range(num_epochs):
         print(f"\nEpoch {epoch+1}/{num_epochs}")
-        total_loss = 0
+        model.train() # 确保模型在训练模式
+        total_train_loss = 0
         total_batches = len(train_loader)
-        
+
         for batch_idx, batch in enumerate(train_loader, 1):
             input_ids = batch['input_ids'].to(device)
             attention_mask = batch['attention_mask'].to(device)
             labels_l1 = batch['labels_l1'].to(device)
             labels_l2 = batch['labels_l2'].to(device)
             labels_l3 = batch['labels_l3'].to(device)
-            
+
             optimizer.zero_grad()
-            
+
             # 使用混合精度训练
             with autocast():
                 outputs = model(input_ids=input_ids, attention_mask=attention_mask)
-                
+
                 loss_l1 = criterion(outputs['l1_logits'], labels_l1)
                 loss_l2 = criterion(outputs['l2_logits'], labels_l2)
                 loss_l3 = criterion(outputs['l3_logits'], labels_l3)
-                
+
                 # Total loss is weighted sum of all levels
                 loss = loss_l1 + loss_l2 + loss_l3
-            
+
             # 使用梯度缩放器
             scaler.scale(loss).backward()
             scaler.step(optimizer)
             scaler.update()
-            
-            total_loss += loss.item()
-            
+
+            total_train_loss += loss.item()
+
             if batch_idx % 10 == 0:
                 print(f"Batch进度: {batch_idx}/{total_batches}, "
-                      f"当前batch损失: {loss.item():.4f}")
+                      f"当前batch训练损失: {loss.item():.4f}")
         
-        avg_loss = total_loss / len(train_loader)
-        print(f'Epoch {epoch+1} 完成, 平均损失: {avg_loss:.4f}')
+        avg_train_loss = total_train_loss / len(train_loader)
+        print(f'Epoch {epoch+1} 训练完成, 平均训练损失: {avg_train_loss:.4f}')
+
+        # --- 验证和早停逻辑 ---
+        avg_val_loss = evaluate_model(model, val_loader, criterion, device)
+        print(f'Epoch {epoch+1}, 平均验证损失: {avg_val_loss:.4f}')
+
+        # 检查是否有改进
+        if avg_val_loss < best_val_loss - min_delta:
+            best_val_loss = avg_val_loss
+            epochs_no_improve = 0
+            best_epoch = epoch + 1
+            # 保存最佳模型
+            torch.save(model.state_dict(), model_save_path)
+            print(f'验证损失改善，保存最佳模型到 {model_save_path}')
+        else:
+            epochs_no_improve += 1
+            print(f'验证损失没有显著改善 ({epochs_no_improve}/{patience})')
+
+        # 检查是否需要早停
+        if epochs_no_improve >= patience:
+            print(f'连续 {patience} 个 epochs 验证损失没有改善，触发早停！')
+            print(f'最佳模型保存在 Epoch {best_epoch}，验证损失为: {best_val_loss:.4f}')
+            break # 退出训练循环
+    
+    if epoch == num_epochs - 1 and epochs_no_improve < patience:
+         print(f'训练完成所有 {num_epochs} 个 epochs。')
+         print(f'最佳模型保存在 Epoch {best_epoch}，验证损失为: {best_val_loss:.4f}')
+
 
 def main():
     print("开始加载tokenizer...")
     tokenizer = LongformerTokenizer.from_pretrained('allenai/longformer-base-4096')
-    
+
     print("加载数据...")
     df = pd.read_csv('data/merged_data_cleaned.csv')
     texts = df['主要内容'].values
+
+    print("从DataFrame提取并预处理标签数据...")
+    # 获取标签列
+    raw_labels_l1 = df['一级分类'].values
+    raw_labels_l2 = df['二级分类'].values
+    raw_labels_l3 = df['三级分类'].values
+
+    # 预处理标签 - 实现标签编码
+    print("处理标签数据...")
     
-    print("加载标签数据...")
-    labels_l1 = np.load('data/cooccurrence_l1_l2.npy')
-    labels_l2 = np.load('data/cooccurrence_l1_l3.npy')
-    labels_l3 = np.load('data/cooccurrence_l1_l3.npy')
+    # 处理一级标签
+    mlb_l1 = MultiLabelBinarizer()
+    # 假设标签是字符串，需要转换为列表
+    processed_labels_l1 = [label.split(',') if isinstance(label, str) else [str(label)] for label in raw_labels_l1]
+    labels_l1 = mlb_l1.fit_transform(processed_labels_l1)
+    num_classes_l1 = len(mlb_l1.classes_)
     
+    # 处理二级标签
+    mlb_l2 = MultiLabelBinarizer()
+    processed_labels_l2 = [label.split(',') if isinstance(label, str) else [str(label)] for label in raw_labels_l2]
+    labels_l2 = mlb_l2.fit_transform(processed_labels_l2)
+    num_classes_l2 = len(mlb_l2.classes_)
+    
+    # 处理三级标签
+    mlb_l3 = MultiLabelBinarizer()
+    processed_labels_l3 = [label.split(',') if isinstance(label, str) else [str(label)] for label in raw_labels_l3]
+    labels_l3 = mlb_l3.fit_transform(processed_labels_l3)
+    num_classes_l3 = len(mlb_l3.classes_)
+    
+    print(f"标签维度: L1={labels_l1.shape}, L2={labels_l2.shape}, L3={labels_l3.shape}")
+    print(f"类别数量: L1={num_classes_l1}, L2={num_classes_l2}, L3={num_classes_l3}")
+
+    # --- 数据划分 ---
+    print("划分训练集和验证集...")
+    indices = np.arange(len(texts))
+    # 使用已经处理好的 NumPy 标签数组进行划分
+    train_indices, val_indices = train_test_split(indices, test_size=0.2, random_state=42)
+
+    train_texts = texts[train_indices]
+    val_texts = texts[val_indices]
+    train_labels_l1 = labels_l1[train_indices]
+    val_labels_l1 = labels_l1[val_indices]
+    train_labels_l2 = labels_l2[train_indices]
+    val_labels_l2 = labels_l2[val_indices]
+    train_labels_l3 = labels_l3[train_indices]
+    val_labels_l3 = labels_l3[val_indices]
+    print(f"训练集大小: {len(train_texts)}, 验证集大小: {len(val_texts)}")
+
     print("初始化模型...")
+    # 使用从预处理中得到的类别数量
     model = HierarchicalClassifier(
-        num_labels_l1=labels_l1.shape[1],
-        num_labels_l2=labels_l2.shape[1],
-        num_labels_l3=labels_l3.shape[1]
+        num_labels_l1=num_classes_l1,
+        num_labels_l2=num_classes_l2,
+        num_labels_l3=num_classes_l3
     )
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"使用设备: {device}")
     model.to(device)
-    
-    print("创建数据加载器...")
-    dataset = TextDataset(texts, labels_l1, labels_l2, labels_l3, tokenizer, max_length=512)
-    train_loader = DataLoader(dataset, 
-                            batch_size=16,
+
+    print("创建数据集和数据加载器...")
+    # 将处理好的标签数组传递给 Dataset
+    train_dataset = TextDataset(train_texts, train_labels_l1, train_labels_l2, train_labels_l3, tokenizer, max_length=512)
+    val_dataset = TextDataset(val_texts, val_labels_l1, val_labels_l2, val_labels_l3, tokenizer, max_length=512)
+
+    train_loader = DataLoader(train_dataset,
+                            batch_size=16, # 根据你的 GPU 显存调整
                             shuffle=True,
-                            num_workers=4,
+                            num_workers=4, # 根据你的 CPU 核心数调整
                             pin_memory=True)
-    
+
+    val_loader = DataLoader(val_dataset,
+                          batch_size=16, # 验证时 batch_size 可以适当增大
+                          shuffle=False, # 验证集不需要打乱
+                          num_workers=4,
+                          pin_memory=True)
+
     print("初始化优化器...")
     optimizer = torch.optim.AdamW(model.parameters(), lr=2e-5)
-    
+
     print("开始训练过程...")
-    train_model(model, train_loader, optimizer, device)
-    
-    print("保存模型...")
-    torch.save(model.state_dict(), 'models/hierarchical_classifier.pth')
-    print("训练完成！")
+    # 调用修改后的 train_model，传入验证加载器和早停参数
+    train_model(model, train_loader, val_loader, optimizer, device, num_epochs=10, patience=2, min_delta=0.005, model_save_path='models/best_hierarchical_classifier.pth')
+
+    # 注意：现在保存最佳模型的操作在 train_model 内部完成
+    # print("保存模型...")
+    # torch.save(model.state_dict(), 'models/hierarchical_classifier.pth')
+    print("训练完成！模型已保存在 'models/hierarchical_classifier.pth'")
 
 if __name__ == '__main__':
     main()
