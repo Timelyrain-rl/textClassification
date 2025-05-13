@@ -117,52 +117,101 @@ def evaluate_model(model, eval_loader, device):
 
 def main():
     print("开始加载tokenizer...")
-    # tokenizer = LongformerTokenizer.from_pretrained('allenai/longformer-base-4096')
-    tokenizer = BertTokenizer.from_pretrained('/root/autodl-tmp/textClassification/models/chinese-roberta-wwm-ext') # 加载本地 BertTokenizer
+    tokenizer = BertTokenizer.from_pretrained('/root/autodl-tmp/textClassification/models/chinese-roberta-wwm-ext')
 
     print("加载数据...")
     df = pd.read_csv('data/merged_data_cleaned.csv')
     texts = df['主要内容'].values
 
-    # --- 修改开始：加载并处理标签 ---
+    # 使用HierarchyBuilder构建层级结构
+    print("构建层级结构...")
+    from utils.hierarchy_utils import HierarchyBuilder
+    hierarchy_builder = HierarchyBuilder()
+    hierarchy_builder.build_from_file('visualization/annot_tree_output/classification_tree.txt')
+    
+    # 获取掩码矩阵
+    l1_to_l2_mask, l2_to_l3_mask = hierarchy_builder.get_mask_matrices()
+    num_l1, num_l2, num_l3 = hierarchy_builder.get_label_counts()
+    
+    print(f"标签数量: L1={num_l1}, L2={num_l2}, L3={num_l3}")
+
+    # 处理标签数据
     print("从DataFrame提取并预处理标签数据...")
-    # 获取标签列
     raw_labels_l1 = df['一级分类'].values
     raw_labels_l2 = df['二级分类'].values
     raw_labels_l3 = df['三级分类'].values
-
-    # 预处理标签 - 实现标签编码
-    print("处理标签数据...")
-
-    # 处理一级标签
-    mlb_l1 = MultiLabelBinarizer()
-    processed_labels_l1 = [label.split(',') if isinstance(label, str) else [str(label)] for label in raw_labels_l1]
+    
+    # 获取有效标签列表
+    valid_l1_labels = list(hierarchy_builder.label_to_id['l1'].keys())
+    valid_l2_labels = list(hierarchy_builder.label_to_id['l2'].keys())
+    valid_l3_labels = list(hierarchy_builder.label_to_id['l3'].keys())
+    
+    # 处理标签数据
+    processed_labels_l1 = [[str(label)] for label in raw_labels_l1]
+    processed_labels_l2 = [[str(label)] for label in raw_labels_l2]
+    processed_labels_l3 = [[str(label)] for label in raw_labels_l3]
+    
+    # 使用预定义的类别进行转换
+    mlb_l1 = MultiLabelBinarizer(classes=valid_l1_labels)
+    mlb_l2 = MultiLabelBinarizer(classes=valid_l2_labels)
+    mlb_l3 = MultiLabelBinarizer(classes=valid_l3_labels)
+    
     labels_l1 = mlb_l1.fit_transform(processed_labels_l1)
+    labels_l2 = mlb_l2.fit_transform(processed_labels_l2)
+    labels_l3 = mlb_l3.fit_transform(processed_labels_l3)
     num_classes_l1 = len(mlb_l1.classes_)
-
+    
     # 处理二级标签
     mlb_l2 = MultiLabelBinarizer()
     processed_labels_l2 = [label.split(',') if isinstance(label, str) else [str(label)] for label in raw_labels_l2]
     labels_l2 = mlb_l2.fit_transform(processed_labels_l2)
     num_classes_l2 = len(mlb_l2.classes_)
-
+    
     # 处理三级标签
     mlb_l3 = MultiLabelBinarizer()
     processed_labels_l3 = [label.split(',') if isinstance(label, str) else [str(label)] for label in raw_labels_l3]
     labels_l3 = mlb_l3.fit_transform(processed_labels_l3)
     num_classes_l3 = len(mlb_l3.classes_)
 
+    # 创建标签索引映射
+    label_indices = {
+        'l1': {label: idx for idx, label in enumerate(mlb_l1.classes_)},
+        'l2': {label: idx for idx, label in enumerate(mlb_l2.classes_)},
+        'l3': {label: idx for idx, label in enumerate(mlb_l3.classes_)}
+    }
+
+    # 创建层级掩码矩阵
+    print("创建层级掩码矩阵...")
+    l1_to_l2_mask = torch.zeros(num_classes_l1, num_classes_l2)
+    l2_to_l3_mask = torch.zeros(num_classes_l2, num_classes_l3)
+
+    # 填充掩码矩阵
+    for l1, l2_list in hierarchy_builder.l1_to_l2_map.items():
+        if l1 in label_indices['l1']:
+            l1_idx = label_indices['l1'][l1]
+            for l2 in l2_list:
+                if l2 in label_indices['l2']:
+                    l2_idx = label_indices['l2'][l2]
+                    l1_to_l2_mask[l1_idx, l2_idx] = 1
+
+    for l2, l3_list in hierarchy_builder.l2_to_l3_map.items():
+        if l2 in label_indices['l2']:
+            l2_idx = label_indices['l2'][l2]
+            for l3 in l3_list:
+                if l3 in label_indices['l3']:
+                    l3_idx = label_indices['l3'][l3]
+                    l2_to_l3_mask[l2_idx, l3_idx] = 1
+
     print(f"标签维度: L1={labels_l1.shape}, L2={labels_l2.shape}, L3={labels_l3.shape}")
     print(f"类别数量: L1={num_classes_l1}, L2={num_classes_l2}, L3={num_classes_l3}")
-    # --- 修改结束 ---
-
+    
     print("初始化模型...")
-    # 注意：HierarchicalClassifier 的 __init__ 默认模型路径已修改为本地路径
-    # 使用从 MultiLabelBinarizer 获取的类别数量
     model = HierarchicalClassifier(
-        num_labels_l1=num_classes_l1,
-        num_labels_l2=num_classes_l2,
-        num_labels_l3=num_classes_l3
+        num_labels_l1=num_classes_l1,  
+        num_labels_l2=num_classes_l2,  
+        num_labels_l3=num_classes_l3,  
+        l1_to_l2_mask=l1_to_l2_mask,
+        l2_to_l3_mask=l2_to_l3_mask
     )
 
     print("加载模型权重...")
