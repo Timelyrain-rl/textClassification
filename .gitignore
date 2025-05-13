@@ -5,3 +5,4 @@
 *.bin
 *.h5
 *.msgpack
+*.pyc

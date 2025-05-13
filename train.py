@@ -256,10 +256,6 @@ def main():
     print("开始训练过程...")
     # 调用修改后的 train_model，传入验证加载器和早停参数
     train_model(model, train_loader, val_loader, optimizer, device, num_epochs=10, patience=2, min_delta=0.005, model_save_path='models/best_hierarchical_classifier.pth')
-
-    # 注意：现在保存最佳模型的操作在 train_model 内部完成
-    # print("保存模型...")
-    # torch.save(model.state_dict(), 'models/hierarchical_classifier.pth')
     print("训练完成！模型已保存在 'models/hierarchical_classifier.pth'")
 
 if __name__ == '__main__':
