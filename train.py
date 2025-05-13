@@ -135,8 +135,7 @@ def train_model(model, train_loader, val_loader, optimizer, device, num_epochs=5
                     model.grandparent_constraint(torch.sigmoid(outputs['l1_logits']))
                 )
                 
-                # 总损失计算
-                total_loss = loss_l1 + loss_l2 + loss_l3 + 0.3 * hierarchy_loss
+                total_loss = loss_l1 + loss_l2 + loss_l3 + 0.5 * hierarchy_loss.mean()
                 loss = total_loss  # 替换原有的简单相加损失
 
             # 使用梯度缩放器
