@@ -6,7 +6,7 @@ from transformers import BertModel, BertConfig # 导入 BertModel 和 BertConfig
 class HierarchicalClassifier(nn.Module):
     # def __init__(self, model_name='allenai/longformer-base-4096',
     def __init__(self, model_name='/root/autodl-tmp/textClassification/models/chinese-roberta-wwm-ext', # 修改默认模型路径
-                 num_labels_l1=13, num_labels_l2=77, num_labels_l3=340,
+                 num_labels_l1, num_labels_l2, num_labels_l3,
                  gradient_checkpointing=True):
         super().__init__()
 
