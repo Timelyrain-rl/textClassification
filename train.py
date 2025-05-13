@@ -135,8 +135,8 @@ def train_model(model, train_loader, val_loader, optimizer, device, num_epochs=5
                     model.grandparent_constraint(torch.sigmoid(outputs['l1_logits']))
                 )
                 
-                total_loss = loss_l1 + loss_l2 + loss_l3 + 0.5 * hierarchy_loss.mean()
-                loss = total_loss  # 替换原有的简单相加损失
+                total_loss = loss_l1 + loss_l2 + loss_l3 + 0.3 * hierarchy_loss.mean()
+                loss = total_loss 
 
             # 使用梯度缩放器
             scaler.scale(loss).backward()
@@ -256,13 +256,13 @@ def main():
     train_loader = DataLoader(train_dataset,
                             batch_size=16,
                             shuffle=True,
-                            num_workers=4,
+                            num_workers=8,
                             pin_memory=True)
 
     val_loader = DataLoader(val_dataset,
                           batch_size=16,
                           shuffle=False,
-                          num_workers=4,
+                          num_workers=8,
                           pin_memory=True)
 
     print("初始化优化器...")

@@ -2,34 +2,13 @@ import torch
 import torch.nn as nn
 # from transformers import LongformerModel, LongformerConfig
 from transformers import BertModel, BertConfig # 导入 BertModel 和 BertConfig
-import numpy as np
 
 class HierarchicalClassifier(nn.Module):
     # def __init__(self, model_name='allenai/longformer-base-4096',
-    def __init__(self, model_name='/root/autodl-tmp/textClassification/models/chinese-roberta-wwm-ext',
+    def __init__(self, model_name='/root/autodl-tmp/textClassification/models/chinese-roberta-wwm-ext', # 修改默认模型路径
                  num_labels_l1=12, num_labels_l2=75, num_labels_l3=341,
-                 gradient_checkpointing=True,
-                 constraint_dir='data'):
+                 gradient_checkpointing=True):
         super().__init__()
-        
-        # 加载约束矩阵
-        parent_constraint = np.load(f"{constraint_dir}/parent_constraint.npy")
-        grandparent_constraint = np.load(f"{constraint_dir}/grandparent_constraint.npy")
-        
-        # 初始化约束层并加载预训练权重
-        self.parent_constraint = nn.Linear(num_labels_l1, num_labels_l2)
-        self.parent_constraint.weight.data = torch.from_numpy(parent_constraint).float()
-        self.parent_constraint.bias.data.zero_()
-        
-        self.grandparent_constraint = nn.Linear(num_labels_l1, num_labels_l3)
-        self.grandparent_constraint.weight.data = torch.from_numpy(grandparent_constraint).float()
-        self.grandparent_constraint.bias.data.zero_()
-    
-        # 冻结约束层参数
-        for param in self.parent_constraint.parameters():
-            param.requires_grad = False
-        for param in self.grandparent_constraint.parameters():
-            param.requires_grad = False
 
         # # Longformer encoder
         # self.config = LongformerConfig.from_pretrained(model_name)
@@ -55,7 +34,7 @@ class HierarchicalClassifier(nn.Module):
         self.grandparent_constraint = nn.Linear(num_labels_l1, num_labels_l3)
         
         # 确保sigmoid层存在
-        self.sigmoid = nn.Sigmoid()
+        self.sigmoid = nn.Sigmoid()  # 添加这行代码
 
         # 调整分类器输入维度
         self.classifier_l2 = nn.Sequential(
@@ -85,14 +64,13 @@ class HierarchicalClassifier(nn.Module):
 
         # Level 2 prediction (concatenate pooled output with l1 logits)
         l2_input = torch.cat([pooled_output, l1_logits], dim=1) # Use l1_logits instead of l1_probs
-        l2_logits = self.classifier_l2(l2_input) + 0.8 * torch.sigmoid(self.parent_constraint(l1_probs))
-        #l2_logits = l2_logits * self.parent_mask[l1_preds.argmax(dim=1)]  # parent_mask从数据生成的约束矩阵
+        # 在原有logits基础上添加层级约束
+        l2_logits = self.classifier_l2(l2_input) + torch.sigmoid(self.parent_constraint(l1_probs))
         l2_probs = self.sigmoid(l2_logits)
 
         # Level 3 prediction (concatenate pooled output with l2 logits)
         l3_input = torch.cat([pooled_output, l2_logits], dim=1)
-        l3_logits = self.classifier_l3(l3_input) + 1.2 * torch.sigmoid(self.grandparent_constraint(l1_probs))
-        #l3_logits = l3_logits * self.grandparent_mask[l1_preds.argmax(dim=1)]
+        l3_logits = self.classifier_l3(l3_input) + torch.sigmoid(self.grandparent_constraint(l1_probs))
         l3_probs = self.sigmoid(l3_logits)
 
         return {
