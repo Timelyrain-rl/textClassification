@@ -107,14 +107,92 @@ def evaluate_model(model, eval_loader, device):
             'f1': f1
         }
     
+    def post_process(predictions):
+        # 获取各层级预测结果
+        l1_preds = (predictions['l1_probs'] > 0.5).float()
+        l2_preds = (predictions['l2_probs'] > 0.5).float()
+        l3_preds = (predictions['l3_probs'] > 0.5).float()
+        
+        # 应用层级约束
+        l2_preds = l2_preds * l1_preds.unsqueeze(-1)  # 子类必须属于激活的父类
+        l3_preds = l3_preds * l2_preds.unsqueeze(-1)  # 孙类必须属于激活的子类
+        
+        # 新增层级白名单过滤
+        for i in range(l2_preds.size(0)):
+            active_l1 = l1_preds[i].nonzero().squeeze()
+            allowed_l2 = self.allowed_l2_indices[active_l1]  # 从数据生成的允许列表
+            l2_preds[i] *= allowed_l2
+            
+            active_l2 = l2_preds[i].nonzero().squeeze()
+            allowed_l3 = self.allowed_l3_indices[active_l2]
+            l3_preds[i] *= allowed_l3
+        
+        return {
+            'l1_preds': l1_preds,
+            'l2_preds': l2_preds,
+            'l3_preds': l3_preds
+        }
+    
     results = {
         'level1': calculate_metrics(all_labels_l1, all_predictions_l1, "一级分类"),
         'level2': calculate_metrics(all_labels_l2, all_predictions_l2, "二级分类"),
         'level3': calculate_metrics(all_labels_l3, all_predictions_l3, "三级分类")
     }
     
-    return results
+    # 在return前添加预测结果的返回
+    return {
+        'results': results,
+        'predictions': {
+            'l1': all_predictions_l1,
+            'l2': all_predictions_l2,
+            'l3': all_predictions_l3
+        }
+    }
 
+def extract_constraint_tree(model, mlb_l1, mlb_l2, mlb_l3, filename="constraint_tree.txt"):
+    """从模型参数中提取层级约束关系"""
+    # 获取约束矩阵权重
+    parent_weights = model.parent_constraint.weight.detach().cpu().numpy()
+    grandparent_weights = model.grandparent_constraint.weight.detach().cpu().numpy()
+    
+    # 构建树结构
+    tree = {}
+    
+    # 一级到二级的约束关系
+    for l2_idx in range(parent_weights.shape[0]):
+        l1_parent = np.argmax(parent_weights[l2_idx])
+        l1_name = mlb_l1.classes_[l1_parent]
+        l2_name = mlb_l2.classes_[l2_idx]
+        
+        if l1_name not in tree:
+            tree[l1_name] = {}
+        tree[l1_name][l2_name] = []
+    
+    # 二级到三级的约束关系
+    for l3_idx in range(grandparent_weights.shape[0]):
+        l1_grandparent = np.argmax(grandparent_weights[l3_idx])
+        # 修正索引：使用L1父类索引而非L3索引
+        l2_parents = np.where(parent_weights[:, l1_grandparent] > 0.5)[0]  # 阈值可调整
+        
+        for l2_idx in l2_parents:
+            l1_name = mlb_l1.classes_[l1_grandparent]
+            l2_name = mlb_l2.classes_[l2_idx]
+            l3_name = mlb_l3.classes_[l3_idx]
+            
+            if l1_name in tree and l2_name in tree[l1_name]:
+                tree[l1_name][l2_name].append(l3_name)
+
+    # 写入文件
+    with open(filename, 'w', encoding='utf-8') as f:
+        for l1, children in tree.items():
+            f.write(f"┌── {l1}\n")
+            for l2, l3_list in children.items():
+                f.write(f"│   ├── {l2}\n")
+                for l3 in l3_list:
+                    f.write(f"│   │   └── {l3}\n")
+    print(f"约束树已保存至 {filename}")
+
+# 在main函数中添加调用
 def main():
     print("开始加载tokenizer...")
     # tokenizer = LongformerTokenizer.from_pretrained('allenai/longformer-base-4096')
@@ -185,7 +263,36 @@ def main():
                            num_workers=4,
                            pin_memory=True)
 
-    evaluate_model(model, eval_loader, device)
+    # 修改评估调用方式
+    eval_results = evaluate_model(model, eval_loader, device)
+    
+    extract_constraint_tree(model, mlb_l1, mlb_l2, mlb_l3)
+    
+    # 获取预测结果
+    all_predictions_l1 = eval_results['predictions']['l1']
+    all_predictions_l2 = eval_results['predictions']['l2']
+    all_predictions_l3 = eval_results['predictions']['l3']
+
+    # 层级一致性检查（移动到这里）
+    hierarchy_violations = 0
+    for i in range(len(all_predictions_l1)):
+        l1_active = np.where(all_predictions_l1[i] > 0.5)[0]
+        l2_active = np.where(all_predictions_l2[i] > 0.5)[0]
+        l3_active = np.where(all_predictions_l3[i] > 0.5)[0]
+        
+        # 检查子类是否属于激活的父类
+        if not set(l2_active).issubset(l1_active):
+            hierarchy_violations += 1
+        
+        # 检查孙类是否属于激活的子类 
+        if not set(l3_active).issubset(l2_active):
+            hierarchy_violations += 1
+
+    print(f"\n层级一致性检查结果:")
+    print(f"总样本数: {len(all_predictions_l1)}")
+    print(f"层级约束违反次数: {hierarchy_violations}")
+    print(f"层级一致性: {1 - hierarchy_violations/(2*len(all_predictions_l1)):.2%}")
+
 
 if __name__ == '__main__':
     main()

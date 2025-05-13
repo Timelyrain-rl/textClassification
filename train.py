@@ -10,6 +10,9 @@ from sklearn.model_selection import train_test_split
 import os
 from sklearn.preprocessing import MultiLabelBinarizer 
 
+# 在文件顶部添加导入语句
+import torch.nn.functional as F  # 添加这行代码
+
 # 在 TextDataset 类中添加预处理缓存
 class TextDataset(Dataset):
     def __init__(self, texts, labels_l1, labels_l2, labels_l3, tokenizer, max_length=4096):
@@ -103,6 +106,7 @@ def train_model(model, train_loader, val_loader, optimizer, device, num_epochs=5
         total_train_loss = 0
         total_batches = len(train_loader)
 
+        # 保持现有训练循环不变，现在F已经被正确导入
         for batch_idx, batch in enumerate(train_loader, 1):
             input_ids = batch['input_ids'].to(device)
             attention_mask = batch['attention_mask'].to(device)
@@ -116,12 +120,23 @@ def train_model(model, train_loader, val_loader, optimizer, device, num_epochs=5
             with autocast():
                 outputs = model(input_ids=input_ids, attention_mask=attention_mask)
 
-                loss_l1 = criterion(outputs['l1_logits'], labels_l1)
-                loss_l2 = criterion(outputs['l2_logits'], labels_l2)
-                loss_l3 = criterion(outputs['l3_logits'], labels_l3)
-
-                # Total loss is weighted sum of all levels
-                loss = loss_l1 + loss_l2 + loss_l3
+                # 原始损失计算
+                loss_l1 = F.binary_cross_entropy_with_logits(outputs['l1_logits'], labels_l1)
+                loss_l2 = F.binary_cross_entropy_with_logits(outputs['l2_logits'], labels_l2)
+                loss_l3 = F.binary_cross_entropy_with_logits(outputs['l3_logits'], labels_l3)
+                
+                # 层级约束损失
+                hierarchy_loss = F.mse_loss(
+                    torch.sigmoid(outputs['l2_logits']),
+                    model.parent_constraint(torch.sigmoid(outputs['l1_logits']))
+                )
+                hierarchy_loss += F.mse_loss(
+                    torch.sigmoid(outputs['l3_logits']),
+                    model.grandparent_constraint(torch.sigmoid(outputs['l1_logits']))
+                )
+                
+                total_loss = loss_l1 + loss_l2 + loss_l3 + 0.3 * hierarchy_loss.mean()
+                loss = total_loss 
 
             # 使用梯度缩放器
             scaler.scale(loss).backward()
@@ -241,13 +256,13 @@ def main():
     train_loader = DataLoader(train_dataset,
                             batch_size=16,
                             shuffle=True,
-                            num_workers=4,
+                            num_workers=8,
                             pin_memory=True)
 
     val_loader = DataLoader(val_dataset,
                           batch_size=16,
                           shuffle=False,
-                          num_workers=4,
+                          num_workers=8,
                           pin_memory=True)
 
     print("初始化优化器...")
@@ -256,10 +271,6 @@ def main():
     print("开始训练过程...")
     # 调用修改后的 train_model，传入验证加载器和早停参数
     train_model(model, train_loader, val_loader, optimizer, device, num_epochs=10, patience=2, min_delta=0.005, model_save_path='models/best_hierarchical_classifier.pth')
-
-    # 注意：现在保存最佳模型的操作在 train_model 内部完成
-    # print("保存模型...")
-    # torch.save(model.state_dict(), 'models/hierarchical_classifier.pth')
     print("训练完成！模型已保存在 'models/hierarchical_classifier.pth'")
 
 if __name__ == '__main__':
