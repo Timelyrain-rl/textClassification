@@ -107,6 +107,22 @@ def evaluate_model(model, eval_loader, device):
             'f1': f1
         }
     
+    def post_process(predictions):
+        # 获取各层级预测结果
+        l1_preds = (predictions['l1_probs'] > 0.5).float()
+        l2_preds = (predictions['l2_probs'] > 0.5).float()
+        l3_preds = (predictions['l3_probs'] > 0.5).float()
+        
+        # 应用层级约束
+        l2_preds = l2_preds * l1_preds.unsqueeze(-1)  # 子类必须属于激活的父类
+        l3_preds = l3_preds * l2_preds.unsqueeze(-1)  # 孙类必须属于激活的子类
+        
+        return {
+            'l1_preds': l1_preds,
+            'l2_preds': l2_preds,
+            'l3_preds': l3_preds
+        }
+    
     results = {
         'level1': calculate_metrics(all_labels_l1, all_predictions_l1, "一级分类"),
         'level2': calculate_metrics(all_labels_l2, all_predictions_l2, "二级分类"),
