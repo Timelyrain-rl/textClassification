@@ -1,6 +1,5 @@
 import torch
 from torch.utils.data import Dataset, DataLoader
-# from transformers import LongformerTokenizer
 from transformers import BertTokenizer
 from models.hierarchical_classifier import HierarchicalClassifier
 import pandas as pd
@@ -9,11 +8,8 @@ from torch.cuda.amp import autocast, GradScaler
 from sklearn.model_selection import train_test_split
 import os
 from sklearn.preprocessing import MultiLabelBinarizer 
+import torch.nn.functional as F 
 
-# 在文件顶部添加导入语句
-import torch.nn.functional as F  # 添加这行代码
-
-# 在 TextDataset 类中添加预处理缓存
 class TextDataset(Dataset):
     def __init__(self, texts, labels_l1, labels_l2, labels_l3, tokenizer, max_length=4096):
         print(f"开始初始化数据集，共有{len(texts)}条数据...")
@@ -24,7 +20,6 @@ class TextDataset(Dataset):
         self.tokenizer = tokenizer
         self.max_length = max_length
         
-        # 预处理并缓存所有文本编码
         print("开始预处理文本编码...")
         total = len(texts)
         self.encodings = []
@@ -43,13 +38,11 @@ class TextDataset(Dataset):
         return len(self.texts)
 
     def __getitem__(self, idx):
-        # 确保返回的标签是正确的类型和形状
         encoding = self.encodings[idx]
         item = {
             'input_ids': encoding['input_ids'].flatten(),
             'attention_mask': encoding['attention_mask'].flatten(),
         }
-        # 确保标签是 FloatTensor
         if self.labels_l1 is not None:
             item['labels_l1'] = torch.FloatTensor(self.labels_l1[idx])
         if self.labels_l2 is not None:
@@ -58,11 +51,11 @@ class TextDataset(Dataset):
             item['labels_l3'] = torch.FloatTensor(self.labels_l3[idx])
         return item
 
-# 新增评估函数
+# 评估函数
 def evaluate_model(model, val_loader, criterion, device):
-    model.eval() # 设置模型为评估模式
+    model.eval()
     total_val_loss = 0
-    with torch.no_grad(): # 在评估阶段不计算梯度
+    with torch.no_grad(): 
         for batch in val_loader:
             input_ids = batch['input_ids'].to(device)
             attention_mask = batch['attention_mask'].to(device)
@@ -70,7 +63,7 @@ def evaluate_model(model, val_loader, criterion, device):
             labels_l2 = batch['labels_l2'].to(device)
             labels_l3 = batch['labels_l3'].to(device)
 
-            with autocast(): # 同样可以使用混合精度进行评估
+            with autocast(): 
                 outputs = model(input_ids=input_ids, attention_mask=attention_mask)
                 loss_l1 = criterion(outputs['l1_logits'], labels_l1)
                 loss_l2 = criterion(outputs['l2_logits'], labels_l2)
@@ -80,7 +73,7 @@ def evaluate_model(model, val_loader, criterion, device):
             total_val_loss += loss.item()
 
     avg_val_loss = total_val_loss / len(val_loader)
-    model.train() # 将模型设置回训练模式
+    model.train()
     return avg_val_loss
 
 def train_model(model, train_loader, val_loader, optimizer, device, num_epochs=5, patience=3, min_delta=0.001, model_save_path='models/best_hierarchical_classifier.pth'):
@@ -94,7 +87,6 @@ def train_model(model, train_loader, val_loader, optimizer, device, num_epochs=5
     epochs_no_improve = 0
     best_epoch = 0
 
-    # 确保保存模型的目录存在
     model_save_dir = os.path.dirname(model_save_path)
     if not os.path.exists(model_save_dir):
         os.makedirs(model_save_dir)
@@ -102,11 +94,10 @@ def train_model(model, train_loader, val_loader, optimizer, device, num_epochs=5
 
     for epoch in range(num_epochs):
         print(f"\nEpoch {epoch+1}/{num_epochs}")
-        model.train() # 确保模型在训练模式
+        model.train()
         total_train_loss = 0
         total_batches = len(train_loader)
 
-        # 保持现有训练循环不变，现在F已经被正确导入
         for batch_idx, batch in enumerate(train_loader, 1):
             input_ids = batch['input_ids'].to(device)
             attention_mask = batch['attention_mask'].to(device)
@@ -116,7 +107,6 @@ def train_model(model, train_loader, val_loader, optimizer, device, num_epochs=5
 
             optimizer.zero_grad()
 
-            # 使用混合精度训练
             with autocast():
                 outputs = model(input_ids=input_ids, attention_mask=attention_mask)
 
@@ -138,7 +128,6 @@ def train_model(model, train_loader, val_loader, optimizer, device, num_epochs=5
                 total_loss = loss_l1 + loss_l2 + loss_l3 + 0.3 * hierarchy_loss.mean()
                 loss = total_loss 
 
-            # 使用梯度缩放器
             scaler.scale(loss).backward()
             scaler.step(optimizer)
             scaler.update()
@@ -156,7 +145,7 @@ def train_model(model, train_loader, val_loader, optimizer, device, num_epochs=5
         avg_val_loss = evaluate_model(model, val_loader, criterion, device)
         print(f'Epoch {epoch+1}, 平均验证损失: {avg_val_loss:.4f}')
 
-        # 检查是否有改进
+        # 检查改进
         if avg_val_loss < best_val_loss - min_delta:
             best_val_loss = avg_val_loss
             epochs_no_improve = 0
@@ -168,11 +157,11 @@ def train_model(model, train_loader, val_loader, optimizer, device, num_epochs=5
             epochs_no_improve += 1
             print(f'验证损失没有显著改善 ({epochs_no_improve}/{patience})')
 
-        # 检查是否需要早停
+        # 检查早停
         if epochs_no_improve >= patience:
             print(f'连续 {patience} 个 epochs 验证损失没有改善，提前停止训练')
             print(f'最佳模型保存在 Epoch {best_epoch}，验证损失为: {best_val_loss:.4f}')
-            break # 退出训练循环
+            break
     
     if epoch == num_epochs - 1 and epochs_no_improve < patience:
          print(f'训练完成所有 {num_epochs} 个 epochs')
@@ -181,7 +170,6 @@ def train_model(model, train_loader, val_loader, optimizer, device, num_epochs=5
 
 def main():
     print("开始加载tokenizer...")
-    # tokenizer = LongformerTokenizer.from_pretrained('allenai/longformer-base-4096')
     tokenizer = BertTokenizer.from_pretrained('/root/autodl-tmp/textClassification/models/chinese-roberta-wwm-ext') # 加载本地 BertTokenizer
 
     print("加载数据...")
@@ -199,7 +187,6 @@ def main():
     
     # 处理一级标签
     mlb_l1 = MultiLabelBinarizer()
-    # 假设标签是字符串，需要转换为列表
     processed_labels_l1 = [label.split(',') if isinstance(label, str) else [str(label)] for label in raw_labels_l1]
     labels_l1 = mlb_l1.fit_transform(processed_labels_l1)
     num_classes_l1 = len(mlb_l1.classes_)
@@ -222,7 +209,6 @@ def main():
     # --- 数据划分 ---
     print("划分训练集和验证集...")
     indices = np.arange(len(texts))
-    # 使用已经处理好的 NumPy 标签数组进行划分
     train_indices, val_indices = train_test_split(indices, test_size=0.2, random_state=42)
 
     train_texts = texts[train_indices]
@@ -237,7 +223,6 @@ def main():
 
     print("初始化模型...")
     # 使用从预处理中得到的类别数量
-    # HierarchicalClassifier 的 __init__ 默认模型路径已修改为本地路径
     model = HierarchicalClassifier(
         num_labels_l1=num_classes_l1,
         num_labels_l2=num_classes_l2,
@@ -248,8 +233,6 @@ def main():
     model.to(device)
 
     print("创建数据集和数据加载器...")
-    # 将处理好的标签数组传递给 Dataset
-    # 当前 max_length=512
     train_dataset = TextDataset(train_texts, train_labels_l1, train_labels_l2, train_labels_l3, tokenizer, max_length=512)
     val_dataset = TextDataset(val_texts, val_labels_l1, val_labels_l2, val_labels_l3, tokenizer, max_length=512)
 

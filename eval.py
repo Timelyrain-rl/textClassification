@@ -1,12 +1,11 @@
 import torch
 from torch.utils.data import Dataset, DataLoader
-# from transformers import LongformerTokenizer
-from transformers import BertTokenizer # 导入 BertTokenizer
+from transformers import BertTokenizer
 from models.hierarchical_classifier import HierarchicalClassifier
 import pandas as pd
 import numpy as np
 from sklearn.metrics import precision_recall_fscore_support, accuracy_score
-from sklearn.preprocessing import MultiLabelBinarizer # 新增导入
+from sklearn.preprocessing import MultiLabelBinarizer
 
 class TextDataset(Dataset):
     def __init__(self, texts, labels_l1, labels_l2, labels_l3, tokenizer, max_length=512):
@@ -108,16 +107,13 @@ def evaluate_model(model, eval_loader, device):
         }
     
     def post_process(predictions):
-        # 获取各层级预测结果
         l1_preds = (predictions['l1_probs'] > 0.5).float()
         l2_preds = (predictions['l2_probs'] > 0.5).float()
         l3_preds = (predictions['l3_probs'] > 0.5).float()
         
-        # 应用层级约束
-        l2_preds = l2_preds * l1_preds.unsqueeze(-1)  # 子类必须属于激活的父类
-        l3_preds = l3_preds * l2_preds.unsqueeze(-1)  # 孙类必须属于激活的子类
+        l2_preds = l2_preds * l1_preds.unsqueeze(-1)
+        l3_preds = l3_preds * l2_preds.unsqueeze(-1)
         
-        # 新增层级白名单过滤
         for i in range(l2_preds.size(0)):
             active_l1 = l1_preds[i].nonzero().squeeze()
             allowed_l2 = self.allowed_l2_indices[active_l1]  # 从数据生成的允许列表
@@ -139,7 +135,6 @@ def evaluate_model(model, eval_loader, device):
         'level3': calculate_metrics(all_labels_l3, all_predictions_l3, "三级分类")
     }
     
-    # 在return前添加预测结果的返回
     return {
         'results': results,
         'predictions': {
@@ -195,7 +190,6 @@ def extract_constraint_tree(model, mlb_l1, mlb_l2, mlb_l3, filename="constraint_
 # 在main函数中添加调用
 def main():
     print("开始加载tokenizer...")
-    # tokenizer = LongformerTokenizer.from_pretrained('allenai/longformer-base-4096')
     tokenizer = BertTokenizer.from_pretrained('/root/autodl-tmp/textClassification/models/chinese-roberta-wwm-ext') # 加载本地 BertTokenizer
 
     print("加载数据...")
@@ -232,11 +226,8 @@ def main():
 
     print(f"标签维度: L1={labels_l1.shape}, L2={labels_l2.shape}, L3={labels_l3.shape}")
     print(f"类别数量: L1={num_classes_l1}, L2={num_classes_l2}, L3={num_classes_l3}")
-    # --- 修改结束 ---
 
     print("初始化模型...")
-    # 注意：HierarchicalClassifier 的 __init__ 默认模型路径已修改为本地路径
-    # 使用从 MultiLabelBinarizer 获取的类别数量
     model = HierarchicalClassifier(
         num_labels_l1=num_classes_l1,
         num_labels_l2=num_classes_l2,
@@ -244,7 +235,7 @@ def main():
     )
 
     print("加载模型权重...")
-    # 确保加载的是最佳模型
+    # 加载最佳模型
     model_path = 'models/best_hierarchical_classifier.pth'
     print(f"从 {model_path} 加载模型...")
     model.load_state_dict(torch.load(model_path))
@@ -254,12 +245,12 @@ def main():
     model.to(device)
 
     print("创建评估数据加载器...")
-    # 确认 max_length 是否适合 RoBERTa (通常是 512)
+    # 确认 max_length 是否适合 RoBERTa
     # 将处理后的标签传递给 Dataset
     eval_dataset = TextDataset(texts, labels_l1, labels_l2, labels_l3, tokenizer, max_length=512)
     eval_loader = DataLoader(eval_dataset,
-                           batch_size=16, # 可以根据评估时的显存调整
-                           shuffle=False, # 评估时不需要打乱
+                           batch_size=16,
+                           shuffle=False,
                            num_workers=4,
                            pin_memory=True)
 
@@ -273,18 +264,16 @@ def main():
     all_predictions_l2 = eval_results['predictions']['l2']
     all_predictions_l3 = eval_results['predictions']['l3']
 
-    # 层级一致性检查（移动到这里）
+    # 层级一致性检查
     hierarchy_violations = 0
     for i in range(len(all_predictions_l1)):
         l1_active = np.where(all_predictions_l1[i] > 0.5)[0]
         l2_active = np.where(all_predictions_l2[i] > 0.5)[0]
         l3_active = np.where(all_predictions_l3[i] > 0.5)[0]
         
-        # 检查子类是否属于激活的父类
         if not set(l2_active).issubset(l1_active):
             hierarchy_violations += 1
         
-        # 检查孙类是否属于激活的子类 
         if not set(l3_active).issubset(l2_active):
             hierarchy_violations += 1
 
