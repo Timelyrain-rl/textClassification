@@ -6,6 +6,8 @@ import pandas as pd
 import numpy as np
 from sklearn.metrics import precision_recall_fscore_support, accuracy_score
 from sklearn.preprocessing import MultiLabelBinarizer
+from sklearn.preprocessing import label_binarize
+from sklearn.metrics import top_k_accuracy_score
 
 class TextDataset(Dataset):
     def __init__(self, texts, labels_l1, labels_l2, labels_l3, tokenizer, max_length=512):
@@ -158,16 +160,10 @@ def evaluate_model(model, eval_loader, device):
             'l3_preds': l3_preds
         }
     
-    # 添加Top-K计算
-    from sklearn.preprocessing import label_binarize
-    from sklearn.metrics import top_k_accuracy_score
-    
     def calculate_top_k(y_true, y_logits, k=5):
-        # 将多标签转换为多类格式（假设每个样本只有一个真实标签）
         y_true_classes = np.argmax(y_true, axis=1)
         return top_k_accuracy_score(y_true_classes, y_logits, k=k)
     
-    # 修改调用方式，传递logits数据
     results = {
         'level1': calculate_metrics(all_labels_l1, all_predictions_l1, all_logits_l1, "一级分类"),
         'level2': calculate_metrics(all_labels_l2, all_predictions_l2, all_logits_l2, "二级分类"),
