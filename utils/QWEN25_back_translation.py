@@ -21,16 +21,23 @@ class BackTranslator:
         inputs = self.tokenizer.apply_chat_template(
             messages,
             tokenize=True,
-            return_tensors="pt"
+            return_tensors="pt",
+            padding='max_length',  # 改用固定长度padding
+            truncation=True,
+            max_length=512,
+            return_attention_mask=True
         ).to(self.device)
         
         with torch.no_grad():
             outputs = self.model.generate(
-                inputs,
+                input_ids=inputs.input_ids,  # 显式获取input_ids
+                attention_mask=inputs.attention_mask,  # 确保传递attention_mask
                 max_new_tokens=max_length,
                 temperature=temperature,
                 top_p=0.9,
-                do_sample=True
+                do_sample=True,
+                pad_token_id=self.tokenizer.eos_token_id,
+                eos_token_id=self.tokenizer.eos_token_id  # 显式设置结束符
             )
         return self.tokenizer.decode(outputs[0], skip_special_tokens=True).split("改写：")[-1].strip()
 
@@ -49,6 +56,11 @@ def process_csv(input_path, output_dir, batch_size=32):
     with ctx.Pool(processes=4) as pool:  # 修改为使用spawn上下文
         args = [(translator, text) for text in sampled_df['主要内容']]
         results = list(tqdm(pool.imap(batch_augment, args), total=len(sampled_df)))
+        print(results)
+
+    # 保存增强后的数据
+    sampled_df['回译内容'] = results
+    output_path = os.path.join(output_dir, f"augmented_sample_{os.path.basename(input_path)}")
     
     # 保存增强后的数据
     sampled_df['回译内容'] = results
@@ -65,7 +77,7 @@ class BackTranslator:
         self.model.eval()
         
     def augment_text(self, text, max_length=512, temperature=0.7):
-        prompt = f"""将以下文本进行同义改写，保持核心语义不变但使用不同的表达方式。直接输出改写后的文本：
+        prompt = f"""将以下文本进行同义改写，保持核心语义不变但使用不同的表达方式。只输出改写后的文本：
 原文：{text}
 改写："""
         

@@ -55,6 +55,10 @@ def evaluate_model(model, eval_loader, device):
     all_labels_l2 = []
     all_labels_l3 = []
     
+    all_logits_l1 = []  # 新增logits收集
+    all_logits_l2 = []
+    all_logits_l3 = []
+    
     with torch.no_grad():
         for batch_idx, batch in enumerate(eval_loader):
             if batch_idx % 10 == 0:
@@ -82,7 +86,12 @@ def evaluate_model(model, eval_loader, device):
             all_labels_l1.extend(labels_l1.numpy())
             all_labels_l2.extend(labels_l2.numpy())
             all_labels_l3.extend(labels_l3.numpy())
-    
+            
+            # 收集原始logits
+            all_logits_l1.extend(outputs['l1_logits'].cpu().numpy())
+            all_logits_l2.extend(outputs['l2_logits'].cpu().numpy())
+            all_logits_l3.extend(outputs['l3_logits'].cpu().numpy())
+            
     all_predictions_l1 = np.array(all_predictions_l1)
     all_predictions_l2 = np.array(all_predictions_l2)
     all_predictions_l3 = np.array(all_predictions_l3)
@@ -90,20 +99,40 @@ def evaluate_model(model, eval_loader, device):
     all_labels_l2 = np.array(all_labels_l2)
     all_labels_l3 = np.array(all_labels_l3)
     
-    def calculate_metrics(y_true, y_pred, level_name):
-        precision, recall, f1, _ = precision_recall_fscore_support(y_true, y_pred, average='macro')
+    def calculate_metrics(y_true, y_pred, y_logits, level_name):  # 添加y_logits参数
+        # 原始指标
+        precision_macro, recall_macro, f1_macro, _ = precision_recall_fscore_support(y_true, y_pred, average='macro')
+        precision_micro, recall_micro, f1_micro, _ = precision_recall_fscore_support(y_true, y_pred, average='micro')
         accuracy = accuracy_score(y_true, y_pred)
+        
+        y_true_single = np.argmax(y_true, axis=1)  # 假设每个样本只有一个真实标签
+        y_logits = np.array(y_logits)  # 确保logits是numpy数组
+        
+        try:
+            top3_acc = top_k_accuracy_score(y_true_single, y_logits, k=3)
+            top5_acc = top_k_accuracy_score(y_true_single, y_logits, k=5)
+            top10_acc = top_k_accuracy_score(y_true_single, y_logits, k=10)
+        except Exception as e:
+            print(f"计算Top-K时发生错误: {str(e)}")
+            top3_acc = 0.0
+            top5_acc = 0.0
+            top10_acc = 0.0
+        
         print(f"\n{level_name} 评估结果:")
         print(f"Accuracy: {accuracy:.4f}")
-        print(f"Precision: {precision:.4f}")
-        print(f"Recall: {recall:.4f}")
-        print(f"F1-score: {f1:.4f}")
+        print(f"Macro-F1: {f1_macro:.4f}")
+        print(f"Micro-F1: {f1_micro:.4f}") 
+        print(f"Top-3 Accuracy: {top3_acc:.4f}")
+        print(f"Top-5 Accuracy: {top5_acc:.4f}")
+        print(f"Top-10 Accuracy: {top10_acc:.4f}")  
         
         return {
             'accuracy': accuracy,
-            'precision': precision,
-            'recall': recall,
-            'f1': f1
+            'macro_f1': f1_macro,
+            'micro_f1': f1_micro,
+            'top3_accuracy': top3_acc,
+            'top5_accuracy': top5_acc,
+            'top10_accuracy': top10_acc
         }
     
     def post_process(predictions):
@@ -129,11 +158,26 @@ def evaluate_model(model, eval_loader, device):
             'l3_preds': l3_preds
         }
     
+    # 添加Top-K计算
+    from sklearn.preprocessing import label_binarize
+    from sklearn.metrics import top_k_accuracy_score
+    
+    def calculate_top_k(y_true, y_logits, k=5):
+        # 将多标签转换为多类格式（假设每个样本只有一个真实标签）
+        y_true_classes = np.argmax(y_true, axis=1)
+        return top_k_accuracy_score(y_true_classes, y_logits, k=k)
+    
+    # 修改调用方式，传递logits数据
     results = {
-        'level1': calculate_metrics(all_labels_l1, all_predictions_l1, "一级分类"),
-        'level2': calculate_metrics(all_labels_l2, all_predictions_l2, "二级分类"),
-        'level3': calculate_metrics(all_labels_l3, all_predictions_l3, "三级分类")
+        'level1': calculate_metrics(all_labels_l1, all_predictions_l1, all_logits_l1, "一级分类"),
+        'level2': calculate_metrics(all_labels_l2, all_predictions_l2, all_logits_l2, "二级分类"),
+        'level3': calculate_metrics(all_labels_l3, all_predictions_l3, all_logits_l3, "三级分类")
     }
+    
+    # 添加Top-K结果
+    results['level1']['top5_accuracy'] = calculate_top_k(all_labels_l1, all_logits_l1, 5)
+    results['level2']['top5_accuracy'] = calculate_top_k(all_labels_l2, all_logits_l2, 5)
+    results['level3']['top5_accuracy'] = calculate_top_k(all_labels_l3, all_logits_l3, 5)
     
     return {
         'results': results,

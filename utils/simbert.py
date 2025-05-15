@@ -28,7 +28,7 @@ def generate_synonyms_csv(input_csv, output_csv):
         try:
             if pd.notnull(row['主要内容']):
                 synonyms = simbert.replace(sent=row['主要内容'], create_num=3)
-                # 提取生成的文本（保留置信度）
+                # 提取生成的文本，保留置信度
                 df.at[idx, '生成文本'] = [f"{text} (置信度:{score:.2f})" for text, score in synonyms]
         except Exception as e:
             print(f"生成失败[{idx}]: {str(e)}")
