@@ -3,7 +3,7 @@ from pyecharts.charts import Map
 from pyecharts import options as opts
 
 # 读取数据
-df = pd.read_csv('/root/autodl-tmp/textClassification/data/merged_data_cleaned.csv')
+df = pd.read_csv('../data/merged_data_cleaned.csv')
 
 # 处理行政区数据（过滤空值并统计频次）
 district_counts = df['被反映区'].value_counts().reset_index()
@@ -25,15 +25,15 @@ m.add("诉求分布",
 m.set_global_opts(
     title_opts=opts.TitleOpts(title="北京市民诉求分布地图"),
     visualmap_opts=opts.VisualMapOpts(
-        max_=district_counts['count'].max(),
+        max_=3000,  # 设置最大值上限
         is_piecewise=True,
         range_text=["高", "低"],
         pieces=[
-            {"min": 20, "label": '20+', "color": "#B40404"},
-            {"min": 15, "max": 19, "label": '15-19', "color": "#DF0100"},
-            {"min": 10, "max": 14, "label": '10-14', "color": "#F78181"},
-            {"min": 5, "max": 9, "label": '5-9', "color": "#F5A9A9"},
-            {"min": 1, "max": 4, "label": '1-4', "color": "#FFFFCC"}
+            {"min": 2001, "label": '2001-3000', "color": "#8B0000"},  # 深红
+            {"min": 1001, "max": 2000, "label": '1001-2000', "color": "#FF6347"}, # 橙红
+            {"min": 501, "max": 1000, "label": '501-1000', "color": "#7B68EE"}, # 过渡紫
+            {"min": 101, "max": 500, "label": '101-500', "color": "#4169E1"},   # 皇家蓝
+            {"min": 0, "max": 100, "label": '0-100', "color": "#87CEEB"}      # 天蓝
         ]
     ),
     tooltip_opts=opts.TooltipOpts(

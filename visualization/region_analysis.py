@@ -13,7 +13,7 @@ def preprocess_region_data(df):
 
 # 生成区域分析图表
 def create_region_chart():
-    df = pd.read_csv('/root/autodl-tmp/textClassification/data/merged_data_cleaned.csv')
+    df = pd.read_csv('../data/merged_data_cleaned.csv')
     region_data = preprocess_region_data(df)
     
     # 获取各区数据量排序
@@ -21,7 +21,7 @@ def create_region_chart():
 
     # 创建时间轴（模拟按钮切换）
     timeline = Timeline(
-        init_opts=opts.InitOpts(width='1200px', height='600px', theme='essos')
+        init_opts=opts.InitOpts(width='1400px', height='600px', theme='essos')  # 加宽整体布局
     )
     timeline.add_schema(
         axis_type='category',
@@ -30,8 +30,10 @@ def create_region_chart():
         play_interval=3000,
         is_auto_play=True,
         is_loop_play=True,
-        pos_left='5%',
-        pos_bottom='15%'
+        pos_left='5%',  # 从15%调整为5%
+        pos_bottom='15%',
+        width=150,  # 增加时间轴宽度
+        height='70%'  # 增加时间轴高度
     )
 
     # 生成各区域图表
@@ -48,36 +50,14 @@ def create_region_chart():
             .set_global_opts(
                 title_opts=opts.TitleOpts(
                     title=f"{region} TOP5 问题分布",
-                    subtitle="点击左侧按钮切换区域",
-                    pos_left="center"
+                    pos_left="center"  # 删除subtitle参数
                 ),
                 xaxis_opts=opts.AxisOpts(
                     name="数量",
                     splitline_opts=opts.SplitLineOpts(is_show=True)),
                 yaxis_opts=opts.AxisOpts(
                     name="问题分类",
-                    axislabel_opts=opts.LabelOpts(font_size=12)),
-                graphic_opts=[opts.GraphicGroup(
-                    graphic_item=opts.GraphicItem(
-                        bounding="raw",
-                        right=100,
-                        bottom=100,
-                        z=100
-                    ),
-                    children=[
-                        opts.GraphicRect(
-                            graphic_item=opts.GraphicItem(
-                                left="center",
-                                top="bottom",
-                                z=100,
-                            ),
-                            graphic_shape_opts=opts.GraphicShapeOpts(
-                                width=400,
-                                height=50
-                            ),
-                        )
-                    ]
-                )]
+                    axislabel_opts=opts.LabelOpts(font_size=12))
             )
         )
         timeline.add(bar, region)

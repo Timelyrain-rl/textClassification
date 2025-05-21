@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>数据控制台</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 p-8">
+    <div class="max-w-6xl mx-auto bg-white rounded-lg shadow-md p-6">
+        <h1 class="text-2xl font-bold mb-6 text-gray-800">工单数据管理</h1>
+        
+        <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">创建时间</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">工单编号</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">主要内容</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">一级分类</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">二级分类</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">三级分类</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">操作</th>
+                </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+                {% for row in data %}
+                <tr class="hover:bg-gray-50">
+                    <td class="px-6 py-4 whitespace-nowrap">{{ row['创建时间'] }}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">{{ row['工单编号'] }}</td>
+                    <td class="px-6 py-4">{{ row['主要内容'] }}</td>
+                    <td class="px-6 py-4" contenteditable="true">{{ row['一级分类'] }}</td>
+                    <td class="px-6 py-4" contenteditable="true">{{ row['二级分类'] }}</td>
+                    <td class="px-6 py-4" contenteditable="true">{{ row['三级分类'] }}</td>
+                    <td class="px-6 py-4">
+                        <button class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md transition-colors">
+                            保存
+                        </button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>
