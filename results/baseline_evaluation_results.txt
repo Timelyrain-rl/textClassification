@@ -1,0 +1,37 @@
+基线模型评估结果:
+
+一级标签评估:
+accuracy: 0.9923
+precision_macro: 0.9020
+recall_macro: 0.8912
+f1_macro: 0.8964
+precision_micro: 0.9926
+recall_micro: 0.9930
+f1_micro: 0.9928
+top3_accuracy: 0.9986
+top5_accuracy: 0.9992
+top10_accuracy: 0.9999
+
+二级标签评估:
+accuracy: 0.8829
+precision_macro: 0.5261
+recall_macro: 0.4802
+f1_macro: 0.4924
+precision_micro: 0.9264
+recall_micro: 0.8886
+f1_micro: 0.9071
+top3_accuracy: 0.9713
+top5_accuracy: 0.9826
+top10_accuracy: 0.9917
+
+三级标签评估:
+accuracy: 0.5441
+precision_macro: 0.0817
+recall_macro: 0.0740
+f1_macro: 0.0728
+precision_micro: 0.7937
+recall_micro: 0.5463
+f1_micro: 0.6471
+top3_accuracy: 0.8212
+top5_accuracy: 0.8723
+top10_accuracy: 0.9253

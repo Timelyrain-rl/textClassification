@@ -47,15 +47,15 @@ class HierarchicalClassifier(nn.Module):
         pooled_output = sequence_output[:, 0]
 
         l1_logits = self.classifier_l1(pooled_output)
-        l1_probs = self.sigmoid(l1_logits)
+        l1_probs = F.softmax(l1_logits, dim=1)
 
         l2_input = torch.cat([pooled_output, l1_logits], dim=1)
         l2_logits = self.classifier_l2(l2_input) + torch.sigmoid(self.parent_constraint(l1_probs))
-        l2_probs = self.sigmoid(l2_logits)
+        l1_probs = F.softmax(l1_logits, dim=1)
 
         l3_input = torch.cat([pooled_output, l2_logits], dim=1)
         l3_logits = self.classifier_l3(l3_input) + torch.sigmoid(self.grandparent_constraint(l1_probs))
-        l3_probs = self.sigmoid(l3_logits)
+        l1_probs = F.softmax(l1_logits, dim=1)
 
         return {
             'l1_logits': l1_logits,
