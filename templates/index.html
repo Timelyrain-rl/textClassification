@@ -3,41 +3,403 @@
 <head>
     <title>数据控制台</title>
     <script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body class="bg-gray-100 p-8">
-    <div class="max-w-6xl mx-auto bg-white rounded-lg shadow-md p-6">
-        <h1 class="text-2xl font-bold mb-6 text-gray-800">工单数据管理</h1>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        /* 整体布局 */
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            height: 100vh;
+        }
         
-        <table class="min-w-full divide-y divide-gray-200">
-            <thead class="bg-gray-50">
-                <tr>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">创建时间</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">工单编号</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">主要内容</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">一级分类</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">二级分类</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">三级分类</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">操作</th>
-                </tr>
-            </thead>
-            <tbody class="bg-white divide-y divide-gray-200">
-                {% for row in data %}
-                <tr class="hover:bg-gray-50">
-                    <td class="px-6 py-4 whitespace-nowrap">{{ row['创建时间'] }}</td>
-                    <td class="px-6 py-4 whitespace-nowrap">{{ row['工单编号'] }}</td>
-                    <td class="px-6 py-4">{{ row['主要内容'] }}</td>
-                    <td class="px-6 py-4" contenteditable="true">{{ row['一级分类'] }}</td>
-                    <td class="px-6 py-4" contenteditable="true">{{ row['二级分类'] }}</td>
-                    <td class="px-6 py-4" contenteditable="true">{{ row['三级分类'] }}</td>
-                    <td class="px-6 py-4">
-                        <button class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md transition-colors">
-                            保存
-                        </button>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+        /* 左侧导航栏 */
+        .sidebar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            height: 100vh;
+            width: 16rem; /* w-64 = 16rem */
+            overflow-y: auto;
+            z-index: 50;
+        }
+        
+        /* 右侧内容区 */
+        .content-container {
+            margin-left: 16rem;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        /* 内容区头部 */
+        .content-header {
+            padding: 1rem;
+            background-color: #f9fafb;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        
+        /* 内容区主体 */
+        .content-body {
+            flex: 1;
+            overflow: auto;
+            padding: 1rem;
+        }
+        
+        /* iframe容器 */
+        .iframe-container {
+            height: 100%;
+            width: 100%;
+            display: none;
+        }
+        
+        .iframe-container iframe {
+            height: 100%;
+            width: 100%;
+            border: none;
+        }
+        
+        /* 数据表格容器 */
+        .table-container {
+            background-color: white;
+            border-radius: 0.5rem;
+            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+            padding: 1.5rem;
+        }
+        
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .sidebar {
+                transform: translateX(-100%);
+                transition: transform 0.3s ease-in-out;
+            }
+            .sidebar.show {
+                transform: translateX(0);
+            }
+            .content-container {
+                margin-left: 0;
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 左侧导航栏 -->
+    <div class="sidebar bg-gray-800 text-white">
+        <div class="p-4 flex flex-col">
+            <div class="text-xl font-bold mb-6 flex items-center">
+                <i class="fas fa-chart-line mr-2"></i>
+                <span>数据分析导航</span>
+            </div>
+            
+            <div class="mb-4">
+                <div class="text-gray-400 text-sm uppercase font-bold mb-2">数据管理</div>
+                <a href="#" class="nav-link block py-2 px-4 rounded hover:bg-gray-700 mb-1 flex items-center" data-target="table-view">
+                    <i class="fas fa-table mr-2"></i>
+                    <span>工单数据管理</span>
+                </a>
+            </div>
+            
+            <div class="mb-4">
+                <div class="text-gray-400 text-sm uppercase font-bold mb-2">可视化分析</div>
+                <a href="#" class="nav-link block py-2 px-4 rounded hover:bg-gray-700 mb-1 flex items-center" data-target="district-distribution">
+                    <i class="fas fa-chart-bar mr-2"></i>
+                    <span>区域分布</span>
+                </a>
+                <a href="#" class="nav-link block py-2 px-4 rounded hover:bg-gray-700 mb-1 flex items-center" data-target="region-top5-interactive">
+                    <i class="fas fa-star mr-2"></i>
+                    <span>区域Top5交互</span>
+                </a>
+                <a href="#" class="nav-link block py-2 px-4 rounded hover:bg-gray-700 mb-1 flex items-center" data-target="source-distribution">
+                    <i class="fas fa-database mr-2"></i>
+                    <span>来源分布</span>
+                </a>
+                <a href="#" class="nav-link block py-2 px-4 rounded hover:bg-gray-700 mb-1 flex items-center" data-target="time-distribution-normalized">
+                    <i class="fas fa-clock mr-2"></i>
+                    <span>时间分布</span>
+                </a>
+                <a href="#" class="nav-link block py-2 px-4 rounded hover:bg-gray-700 mb-1 flex items-center" data-target="tree-visualization">
+                    <i class="fas fa-sitemap mr-2"></i>
+                    <span>分类树可视化</span>
+                </a>
+                <a href="#" class="nav-link block py-2 px-4 rounded hover:bg-gray-700 mb-1 flex items-center" data-target="treemap">
+                    <i class="fas fa-th-large mr-2"></i>
+                    <span>树状图</span>
+                </a>
+                <a href="#" class="nav-link block py-2 px-4 rounded hover:bg-gray-700 mb-1 flex items-center" data-target="wordcloud">
+                    <i class="fas fa-cloud mr-2"></i>
+                    <span>词云图</span>
+                </a>
+            </div>
+        </div>
     </div>
+    
+    <!-- 右侧内容区 -->
+    <div class="content-container bg-gray-100">
+        <!-- 内容区头部 -->
+        <div class="content-header">
+            <h1 id="content-title" class="text-2xl font-bold text-gray-800">工单数据管理</h1>
+        </div>
+        
+        <!-- 内容区主体 -->
+        <div class="content-body">
+            <!-- 数据表格视图 -->
+            <div id="table-view" class="view-container table-container">
+                <!-- 分页导航 -->
+                <div class="flex justify-between items-center mb-4">
+                    <div>
+                        <span class="text-gray-600">当前页: {{ current_page }} / {{ total_pages }}</span>
+                    </div>
+                    <div class="flex space-x-2">
+                        {% if current_page > 1 %}
+                        <a href="{{ url_for('page', page_num=current_page-1) }}" class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded-md transition-colors">
+                            上一页
+                        </a>
+                        {% endif %}
+                        
+                        {% if current_page < total_pages %}
+                        <a href="{{ url_for('page', page_num=current_page+1) }}" class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded-md transition-colors">
+                            下一页
+                        </a>
+                        {% endif %}
+                    </div>
+                </div>
+                
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">创建时间</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">工单编号</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">主要内容</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">一级分类</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">二级分类</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">三级分类</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        {% for row in data %}
+                        <tr class="hover:bg-gray-50" data-id="{{ row['工单编号'] }}">
+                            <td class="px-6 py-4 whitespace-nowrap">{{ row['创建时间'] }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap">{{ row['工单编号'] }}</td>
+                            <td class="px-6 py-4">{{ row['主要内容'] }}</td>
+                            <td class="px-6 py-4 level1" contenteditable="true">{{ row['一级分类'] }}</td>
+                            <td class="px-6 py-4 level2" contenteditable="true">{{ row['二级分类'] }}</td>
+                            <td class="px-6 py-4 level3" contenteditable="true">{{ row['三级分类'] }}</td>
+                            <td class="px-6 py-4">
+                                <button class="save-btn bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md transition-colors">
+                                    保存
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                
+                <!-- 分页导航（底部） -->
+                <div class="flex justify-between items-center mt-4">
+                    <div>
+                        <span class="text-gray-600">当前页: {{ current_page }} / {{ total_pages }}</span>
+                    </div>
+                    <div class="flex space-x-2">
+                        {% if current_page > 1 %}
+                        <a href="{{ url_for('page', page_num=current_page-1) }}" class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded-md transition-colors">
+                            上一页
+                        </a>
+                        {% endif %}
+                        
+                        {% if current_page < total_pages %}
+                        <a href="{{ url_for('page', page_num=current_page+1) }}" class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded-md transition-colors">
+                            下一页
+                        </a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 区域分布 -->
+            <div id="district-distribution" class="view-container iframe-container">
+                <iframe src="{{ url_for('visualization', filename='district_distribution.html') }}"></iframe>
+            </div>
+            
+            <!-- 区域分类分布 -->
+            <div id="region-class-distribution" class="view-container iframe-container">
+                <iframe src="{{ url_for('visualization', filename='region_class_distribution.html') }}"></iframe>
+            </div>
+            
+            <!-- 区域Top3分析 -->
+            <div id="region-top3-bar" class="view-container iframe-container">
+                <iframe src="{{ url_for('visualization', filename='region_top3_bar.html') }}"></iframe>
+            </div>
+            
+            <!-- 区域Top5交互 -->
+            <div id="region-top5-interactive" class="view-container iframe-container">
+                <iframe src="{{ url_for('visualization', filename='region_top5_interactive.html') }}"></iframe>
+            </div>
+            
+            <!-- 来源分布 -->
+            <div id="source-distribution" class="view-container iframe-container">
+                <iframe src="{{ url_for('visualization', filename='source_distribution.html') }}"></iframe>
+            </div>
+            
+            <!-- 时间分布 -->
+            <div id="time-distribution-normalized" class="view-container iframe-container">
+                <iframe src="{{ url_for('visualization', filename='time_distribution_normalized.html') }}"></iframe>
+            </div>
+            
+            <!-- 分类树可视化 -->
+            <div id="tree-visualization" class="view-container iframe-container" style="overflow: auto; position: relative;">
+                <div class="img-container" style="min-width: 100%; min-height: 100%; cursor: move;">
+                    <img src="{{ url_for('visualization', filename='民生三级分类.png') }}" style="width: 100%; height: auto; display: block;">
+                </div>
+            </div>
+            
+            <script>
+            // 添加到现有JavaScript代码的末尾
+            // 图片拖动功能
+            $(document).ready(function() {
+                let isDragging = false;
+                let startX, startY, scrollLeft, scrollTop;
+                
+                const imgContainer = document.querySelector('#tree-visualization .img-container');
+                
+                if (imgContainer) {
+                    imgContainer.addEventListener('mousedown', function(e) {
+                        isDragging = true;
+                        startX = e.pageX - imgContainer.parentElement.offsetLeft;
+                        startY = e.pageY - imgContainer.parentElement.offsetTop;
+                        scrollLeft = imgContainer.parentElement.scrollLeft;
+                        scrollTop = imgContainer.parentElement.scrollTop;
+                    });
+                    
+                    imgContainer.addEventListener('mouseleave', function() {
+                        isDragging = false;
+                    });
+                    
+                    imgContainer.addEventListener('mouseup', function() {
+                        isDragging = false;
+                    });
+                    
+                    imgContainer.addEventListener('mousemove', function(e) {
+                        if (!isDragging) return;
+                        e.preventDefault();
+                        const x = e.pageX - imgContainer.parentElement.offsetLeft;
+                        const y = e.pageY - imgContainer.parentElement.offsetTop;
+                        const walkX = (x - startX) * 1.5; // 滚动速度
+                        const walkY = (y - startY) * 1.5;
+                        imgContainer.parentElement.scrollLeft = scrollLeft - walkX;
+                        imgContainer.parentElement.scrollTop = scrollTop - walkY;
+                    });
+                }
+            });
+            </script>
+            
+            <!-- 树状图 -->
+            <div id="treemap" class="view-container iframe-container">
+                <iframe src="{{ url_for('visualization', filename='treemap.html') }}"></iframe>
+            </div>
+            
+            <!-- 词云图 -->
+            <div id="wordcloud" class="view-container iframe-container">
+                <iframe src="{{ url_for('visualization', filename='wordcloud.html') }}"></iframe>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 移动端菜单按钮 -->
+    <div class="fixed bottom-4 left-4 md:hidden z-50">
+        <button id="menu-toggle" class="bg-blue-500 text-white p-3 rounded-full shadow-lg">
+            <i class="fas fa-bars"></i>
+        </button>
+    </div>
+    
+    <!-- 通知提示 -->
+    <div id="notification" class="fixed top-4 right-4 bg-green-500 text-white px-6 py-3 rounded-md shadow-lg transform transition-transform duration-300 translate-x-full">
+        <span id="notification-message">操作成功</span>
+    </div>
+    
+    <script>
+        $(document).ready(function() {
+            // 默认显示数据表格视图
+            $('.view-container').hide();
+            $('#table-view').show();
+            
+            // 导航链接点击事件
+            $('.nav-link').on('click', function(e) {
+                e.preventDefault();
+                
+                // 获取目标视图ID
+                const targetId = $(this).data('target');
+                
+                // 更新标题
+                $('#content-title').text($(this).find('span').text());
+                
+                // 隐藏所有视图，显示目标视图
+                $('.view-container').hide();
+                $('#' + targetId).show();
+                
+                // 高亮当前选中的导航项
+                $('.nav-link').removeClass('bg-gray-700');
+                $(this).addClass('bg-gray-700');
+            });
+            
+            // 保存按钮点击事件
+            $('.save-btn').on('click', function() {
+                const row = $(this).closest('tr');
+                const workId = row.data('id');
+                const level1 = row.find('.level1').text();
+                const level2 = row.find('.level2').text();
+                const level3 = row.find('.level3').text();
+                
+                // 发送数据到后端
+                $.ajax({
+                    url: '/save',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({
+                        work_id: workId,
+                        level1: level1,
+                        level2: level2,
+                        level3: level3
+                    }),
+                    success: function(response) {
+                        showNotification(response.message, 'success');
+                    },
+                    error: function(xhr) {
+                        const response = xhr.responseJSON || {};
+                        showNotification(response.message || '保存失败', 'error');
+                    }
+                });
+            });
+            
+            // 显示通知
+            function showNotification(message, type) {
+                const notification = $('#notification');
+                $('#notification-message').text(message);
+                
+                // 设置通知颜色
+                if (type === 'success') {
+                    notification.removeClass('bg-red-500').addClass('bg-green-500');
+                } else {
+                    notification.removeClass('bg-green-500').addClass('bg-red-500');
+                }
+                
+                // 显示通知
+                notification.removeClass('translate-x-full');
+                
+                // 3秒后隐藏通知
+                setTimeout(function() {
+                    notification.addClass('translate-x-full');
+                }, 3000);
+            }
+            
+            // 移动端菜单切换
+            $('#menu-toggle').on('click', function() {
+                $('.sidebar').toggleClass('show');
+            });
+        });
+    </script>
 </body>
 </html>

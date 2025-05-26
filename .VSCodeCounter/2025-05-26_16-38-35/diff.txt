@@ -1,0 +1,39 @@
+Date : 2025-05-26 16:38:35
+Directory : e:\study\fourNext\CapstoneProject\textClassification
+Total : 8 files,  1847 codes, 31 comments, 58 blanks, all 1936 lines
+
+Languages
++----------+------------+------------+------------+------------+------------+
+| language | files      | code       | comment    | blank      | total      |
++----------+------------+------------+------------+------------+------------+
+| JSON     |          1 |      1,466 |          0 |          0 |      1,466 |
+| HTML     |          3 |        260 |          6 |         23 |        289 |
+| Python   |          3 |        119 |         25 |         34 |        178 |
+| CSV      |          1 |          2 |          0 |          1 |          3 |
++----------+------------+------------+------------+------------+------------+
+
+Directories
++-------------------------------------------------------------------------------------------------+------------+------------+------------+------------+------------+
+| path                                                                                            | files      | code       | comment    | blank      | total      |
++-------------------------------------------------------------------------------------------------+------------+------------+------------+------------+------------+
+| .                                                                                               |          8 |      1,847 |         31 |         58 |      1,936 |
+| . (Files)                                                                                       |          1 |         49 |         11 |         14 |         74 |
+| data                                                                                            |          1 |          2 |          0 |          1 |          3 |
+| templates                                                                                       |          2 |        125 |          6 |         11 |        142 |
+| visualization                                                                                   |          4 |      1,671 |         14 |         32 |      1,717 |
++-------------------------------------------------------------------------------------------------+------------+------------+------------+------------+------------+
+
+Files
++-------------------------------------------------------------------------------------------------+----------+------------+------------+------------+------------+
+| filename                                                                                        | language | code       | comment    | blank      | total      |
++-------------------------------------------------------------------------------------------------+----------+------------+------------+------------+------------+
+| e:\study\fourNext\CapstoneProject\textClassification\app.py                                     | Python   |         49 |         11 |         14 |         74 |
+| e:\study\fourNext\CapstoneProject\textClassification\data\verification.csv                      | CSV      |          2 |          0 |          1 |          3 |
+| e:\study\fourNext\CapstoneProject\textClassification\templates\index.html                       | HTML     |        191 |          6 |         16 |        213 |
+| e:\study\fourNext\CapstoneProject\textClassification\templates\viewer.html                      | HTML     |        -66 |          0 |         -5 |        -71 |
+| e:\study\fourNext\CapstoneProject\textClassification\visualization\classification_tree.json     | JSON     |      1,466 |          0 |          0 |      1,466 |
+| e:\study\fourNext\CapstoneProject\textClassification\visualization\convert_to_json.py           | Python   |         36 |          6 |         11 |         53 |
+| e:\study\fourNext\CapstoneProject\textClassification\visualization\create_tree_visualization.py | Python   |         34 |          8 |          9 |         51 |
+| e:\study\fourNext\CapstoneProject\textClassification\visualization\tree_visualization.html      | HTML     |        135 |          0 |         12 |        147 |
+| Total                                                                                           |          |      1,847 |         31 |         58 |      1,936 |
++-------------------------------------------------------------------------------------------------+----------+------------+------------+------------+------------+
