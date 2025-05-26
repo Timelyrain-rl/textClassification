@@ -39,4 +39,3 @@ def plot_hierarchy_counts():
 
 if __name__ == "__main__":
     plot_hierarchy_counts()
-    print("层级统计图已生成：hierarchy_counts.png")

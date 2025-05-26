@@ -39,4 +39,3 @@ def generate_wordcloud():
 
 if __name__ == "__main__":
     generate_wordcloud()
-    print("交互式词云已生成：wordcloud.html")

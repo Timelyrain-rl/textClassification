@@ -73,4 +73,4 @@ if __name__ == "__main__":
     plot_level1()
     plot_level2()
     plot_level3()
-    print("可视化图片已生成：level1_classification.png, top5_level2.png, bottom5_level2.png, top5_level3.png, bottom5_level3.png")
+

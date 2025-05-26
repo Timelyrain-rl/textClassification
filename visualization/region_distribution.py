@@ -46,4 +46,3 @@ def generate_region_distribution():
 
 if __name__ == "__main__":
     generate_region_distribution()
-    print("区域分类分布图已生成：region_class_distribution.html")
