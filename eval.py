@@ -1,13 +1,12 @@
 import torch
 from torch.utils.data import Dataset, DataLoader
-from transformers import BertTokenizer
+# from transformers import LongformerTokenizer
+from transformers import BertTokenizer # 导入 BertTokenizer
 from models.hierarchical_classifier import HierarchicalClassifier
 import pandas as pd
 import numpy as np
 from sklearn.metrics import precision_recall_fscore_support, accuracy_score
-from sklearn.preprocessing import MultiLabelBinarizer
-from sklearn.preprocessing import label_binarize
-from sklearn.metrics import top_k_accuracy_score
+from sklearn.preprocessing import MultiLabelBinarizer # 新增导入
 
 class TextDataset(Dataset):
     def __init__(self, texts, labels_l1, labels_l2, labels_l3, tokenizer, max_length=512):
@@ -57,10 +56,6 @@ def evaluate_model(model, eval_loader, device):
     all_labels_l2 = []
     all_labels_l3 = []
     
-    all_logits_l1 = []  # 新增logits收集
-    all_logits_l2 = []
-    all_logits_l3 = []
-    
     with torch.no_grad():
         for batch_idx, batch in enumerate(eval_loader):
             if batch_idx % 10 == 0:
@@ -88,12 +83,7 @@ def evaluate_model(model, eval_loader, device):
             all_labels_l1.extend(labels_l1.numpy())
             all_labels_l2.extend(labels_l2.numpy())
             all_labels_l3.extend(labels_l3.numpy())
-            
-            # 收集原始logits
-            all_logits_l1.extend(outputs['l1_logits'].cpu().numpy())
-            all_logits_l2.extend(outputs['l2_logits'].cpu().numpy())
-            all_logits_l3.extend(outputs['l3_logits'].cpu().numpy())
-            
+    
     all_predictions_l1 = np.array(all_predictions_l1)
     all_predictions_l2 = np.array(all_predictions_l2)
     all_predictions_l3 = np.array(all_predictions_l3)
@@ -101,58 +91,31 @@ def evaluate_model(model, eval_loader, device):
     all_labels_l2 = np.array(all_labels_l2)
     all_labels_l3 = np.array(all_labels_l3)
     
-    def calculate_metrics(y_true, y_pred, y_logits, level_name):  # 添加y_logits参数
-        # 原始指标
-        precision_macro, recall_macro, f1_macro, _ = precision_recall_fscore_support(y_true, y_pred, average='macro')
-        precision_micro, recall_micro, f1_micro, _ = precision_recall_fscore_support(y_true, y_pred, average='micro')
+    def calculate_metrics(y_true, y_pred, level_name):
+        precision, recall, f1, _ = precision_recall_fscore_support(y_true, y_pred, average='macro')
         accuracy = accuracy_score(y_true, y_pred)
-        
-        y_true_single = np.argmax(y_true, axis=1)  # 假设每个样本只有一个真实标签
-        y_logits = np.array(y_logits)  # 确保logits是numpy数组
-        
-        try:
-            top3_acc = top_k_accuracy_score(y_true_single, y_logits, k=3)
-            top5_acc = top_k_accuracy_score(y_true_single, y_logits, k=5)
-            top10_acc = top_k_accuracy_score(y_true_single, y_logits, k=10)
-        except Exception as e:
-            print(f"计算Top-K时发生错误: {str(e)}")
-            top3_acc = 0.0
-            top5_acc = 0.0
-            top10_acc = 0.0
-        
         print(f"\n{level_name} 评估结果:")
         print(f"Accuracy: {accuracy:.4f}")
-        print(f"Macro-F1: {f1_macro:.4f}")
-        print(f"Micro-F1: {f1_micro:.4f}") 
-        print(f"Top-3 Accuracy: {top3_acc:.4f}")
-        print(f"Top-5 Accuracy: {top5_acc:.4f}")
-        print(f"Top-10 Accuracy: {top10_acc:.4f}")  
+        print(f"Precision: {precision:.4f}")
+        print(f"Recall: {recall:.4f}")
+        print(f"F1-score: {f1:.4f}")
         
         return {
             'accuracy': accuracy,
-            'macro_f1': f1_macro,
-            'micro_f1': f1_micro,
-            'top3_accuracy': top3_acc,
-            'top5_accuracy': top5_acc,
-            'top10_accuracy': top10_acc
+            'precision': precision,
+            'recall': recall,
+            'f1': f1
         }
     
     def post_process(predictions):
+        # 获取各层级预测结果
         l1_preds = (predictions['l1_probs'] > 0.5).float()
         l2_preds = (predictions['l2_probs'] > 0.5).float()
         l3_preds = (predictions['l3_probs'] > 0.5).float()
         
-        l2_preds = l2_preds * l1_preds.unsqueeze(-1)
-        l3_preds = l3_preds * l2_preds.unsqueeze(-1)
-        
-        for i in range(l2_preds.size(0)):
-            active_l1 = l1_preds[i].nonzero().squeeze()
-            allowed_l2 = self.allowed_l2_indices[active_l1]  # 从数据生成的允许列表
-            l2_preds[i] *= allowed_l2
-            
-            active_l2 = l2_preds[i].nonzero().squeeze()
-            allowed_l3 = self.allowed_l3_indices[active_l2]
-            l3_preds[i] *= allowed_l3
+        # 应用层级约束
+        l2_preds = l2_preds * l1_preds.unsqueeze(-1)  # 子类必须属于激活的父类
+        l3_preds = l3_preds * l2_preds.unsqueeze(-1)  # 孙类必须属于激活的子类
         
         return {
             'l1_preds': l1_preds,
@@ -160,76 +123,17 @@ def evaluate_model(model, eval_loader, device):
             'l3_preds': l3_preds
         }
     
-    def calculate_top_k(y_true, y_logits, k=5):
-        y_true_classes = np.argmax(y_true, axis=1)
-        return top_k_accuracy_score(y_true_classes, y_logits, k=k)
-    
     results = {
-        'level1': calculate_metrics(all_labels_l1, all_predictions_l1, all_logits_l1, "一级分类"),
-        'level2': calculate_metrics(all_labels_l2, all_predictions_l2, all_logits_l2, "二级分类"),
-        'level3': calculate_metrics(all_labels_l3, all_predictions_l3, all_logits_l3, "三级分类")
+        'level1': calculate_metrics(all_labels_l1, all_predictions_l1, "一级分类"),
+        'level2': calculate_metrics(all_labels_l2, all_predictions_l2, "二级分类"),
+        'level3': calculate_metrics(all_labels_l3, all_predictions_l3, "三级分类")
     }
     
-    # 添加Top-K结果
-    results['level1']['top5_accuracy'] = calculate_top_k(all_labels_l1, all_logits_l1, 5)
-    results['level2']['top5_accuracy'] = calculate_top_k(all_labels_l2, all_logits_l2, 5)
-    results['level3']['top5_accuracy'] = calculate_top_k(all_labels_l3, all_logits_l3, 5)
-    
-    return {
-        'results': results,
-        'predictions': {
-            'l1': all_predictions_l1,
-            'l2': all_predictions_l2,
-            'l3': all_predictions_l3
-        }
-    }
+    return results
 
-def extract_constraint_tree(model, mlb_l1, mlb_l2, mlb_l3, filename="constraint_tree.txt"):
-    """从模型参数中提取层级约束关系"""
-    # 获取约束矩阵权重
-    parent_weights = model.parent_constraint.weight.detach().cpu().numpy()
-    grandparent_weights = model.grandparent_constraint.weight.detach().cpu().numpy()
-    
-    # 构建树结构
-    tree = {}
-    
-    # 一级到二级的约束关系
-    for l2_idx in range(parent_weights.shape[0]):
-        l1_parent = np.argmax(parent_weights[l2_idx])
-        l1_name = mlb_l1.classes_[l1_parent]
-        l2_name = mlb_l2.classes_[l2_idx]
-        
-        if l1_name not in tree:
-            tree[l1_name] = {}
-        tree[l1_name][l2_name] = []
-    
-    # 二级到三级的约束关系
-    for l3_idx in range(grandparent_weights.shape[0]):
-        l1_grandparent = np.argmax(grandparent_weights[l3_idx])
-        # 修正索引：使用L1父类索引而非L3索引
-        l2_parents = np.where(parent_weights[:, l1_grandparent] > 0.5)[0]  # 阈值可调整
-        
-        for l2_idx in l2_parents:
-            l1_name = mlb_l1.classes_[l1_grandparent]
-            l2_name = mlb_l2.classes_[l2_idx]
-            l3_name = mlb_l3.classes_[l3_idx]
-            
-            if l1_name in tree and l2_name in tree[l1_name]:
-                tree[l1_name][l2_name].append(l3_name)
-
-    # 写入文件
-    with open(filename, 'w', encoding='utf-8') as f:
-        for l1, children in tree.items():
-            f.write(f"┌── {l1}\n")
-            for l2, l3_list in children.items():
-                f.write(f"│   ├── {l2}\n")
-                for l3 in l3_list:
-                    f.write(f"│   │   └── {l3}\n")
-    print(f"约束树已保存至 {filename}")
-
-# 在main函数中添加调用
 def main():
     print("开始加载tokenizer...")
+    # tokenizer = LongformerTokenizer.from_pretrained('allenai/longformer-base-4096')
     tokenizer = BertTokenizer.from_pretrained('/root/autodl-tmp/textClassification/models/chinese-roberta-wwm-ext') # 加载本地 BertTokenizer
 
     print("加载数据...")
@@ -266,8 +170,11 @@ def main():
 
     print(f"标签维度: L1={labels_l1.shape}, L2={labels_l2.shape}, L3={labels_l3.shape}")
     print(f"类别数量: L1={num_classes_l1}, L2={num_classes_l2}, L3={num_classes_l3}")
+    # --- 修改结束 ---
 
     print("初始化模型...")
+    # 注意：HierarchicalClassifier 的 __init__ 默认模型路径已修改为本地路径
+    # 使用从 MultiLabelBinarizer 获取的类别数量
     model = HierarchicalClassifier(
         num_labels_l1=num_classes_l1,
         num_labels_l2=num_classes_l2,
@@ -275,7 +182,7 @@ def main():
     )
 
     print("加载模型权重...")
-    # 加载最佳模型
+    # 确保加载的是最佳模型
     model_path = 'models/best_hierarchical_classifier.pth'
     print(f"从 {model_path} 加载模型...")
     model.load_state_dict(torch.load(model_path))
@@ -285,43 +192,16 @@ def main():
     model.to(device)
 
     print("创建评估数据加载器...")
-    # 确认 max_length 是否适合 RoBERTa
+    # 确认 max_length 是否适合 RoBERTa (通常是 512)
     # 将处理后的标签传递给 Dataset
     eval_dataset = TextDataset(texts, labels_l1, labels_l2, labels_l3, tokenizer, max_length=512)
     eval_loader = DataLoader(eval_dataset,
-                           batch_size=16,
-                           shuffle=False,
+                           batch_size=16, # 可以根据评估时的显存调整
+                           shuffle=False, # 评估时不需要打乱
                            num_workers=4,
                            pin_memory=True)
 
-    # 修改评估调用方式
-    eval_results = evaluate_model(model, eval_loader, device)
-    
-    extract_constraint_tree(model, mlb_l1, mlb_l2, mlb_l3)
-    
-    # 获取预测结果
-    all_predictions_l1 = eval_results['predictions']['l1']
-    all_predictions_l2 = eval_results['predictions']['l2']
-    all_predictions_l3 = eval_results['predictions']['l3']
-
-    # 层级一致性检查
-    hierarchy_violations = 0
-    for i in range(len(all_predictions_l1)):
-        l1_active = np.where(all_predictions_l1[i] > 0.5)[0]
-        l2_active = np.where(all_predictions_l2[i] > 0.5)[0]
-        l3_active = np.where(all_predictions_l3[i] > 0.5)[0]
-        
-        if not set(l2_active).issubset(l1_active):
-            hierarchy_violations += 1
-        
-        if not set(l3_active).issubset(l2_active):
-            hierarchy_violations += 1
-
-    print(f"\n层级一致性检查结果:")
-    print(f"总样本数: {len(all_predictions_l1)}")
-    print(f"层级约束违反次数: {hierarchy_violations}")
-    print(f"层级一致性: {1 - hierarchy_violations/(2*len(all_predictions_l1)):.2%}")
-
+    evaluate_model(model, eval_loader, device)
 
 if __name__ == '__main__':
     main()
