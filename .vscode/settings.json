@@ -1,7 +1,0 @@
-{
-    "python.analysis.autoImportCompletions": true,
-    "marscode.codeCompletionPro": {
-        "enableCodeCompletionPro": true
-    },
-    "marscode.chatLanguage": "cn"
-}
